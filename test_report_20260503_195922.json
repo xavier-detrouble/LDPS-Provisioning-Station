@@ -1,0 +1,325 @@
+{
+  "timestamp": "2026-05-03T19:59:22Z",
+  "probe": "/dev/cu.usbmodem11101",
+  "node_mac": "E0:72:A1:F2:CB:98",
+  "passed": 63,
+  "failed": 0,
+  "total": 63,
+  "tests": [
+    {
+      "name": "Capture completed",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "CH0: frames > 0",
+      "status": "PASS",
+      "detail": "29"
+    },
+    {
+      "name": "CH0: timing OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "CH0: FPS 20-50",
+      "status": "PASS",
+      "detail": "29.4"
+    },
+    {
+      "name": "CH0: no drops",
+      "status": "PASS",
+      "detail": "0"
+    },
+    {
+      "name": "CH1: frames > 0",
+      "status": "PASS",
+      "detail": "31"
+    },
+    {
+      "name": "CH1: timing OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "CH1: FPS 20-50",
+      "status": "PASS",
+      "detail": "30.8"
+    },
+    {
+      "name": "CH1: no drops",
+      "status": "PASS",
+      "detail": "0"
+    },
+    {
+      "name": "CH2: frames > 0",
+      "status": "PASS",
+      "detail": "30"
+    },
+    {
+      "name": "CH2: timing OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "CH2: FPS 20-50",
+      "status": "PASS",
+      "detail": "30.0"
+    },
+    {
+      "name": "CH2: no drops",
+      "status": "PASS",
+      "detail": "0"
+    },
+    {
+      "name": "CH3: frames > 0",
+      "status": "PASS",
+      "detail": "31"
+    },
+    {
+      "name": "CH3: timing OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "CH3: FPS 20-50",
+      "status": "PASS",
+      "detail": "30.7"
+    },
+    {
+      "name": "CH3: no drops",
+      "status": "PASS",
+      "detail": "0"
+    },
+    {
+      "name": "CH4: frames > 0",
+      "status": "PASS",
+      "detail": "30"
+    },
+    {
+      "name": "CH4: timing OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "CH4: FPS 20-50",
+      "status": "PASS",
+      "detail": "30.9"
+    },
+    {
+      "name": "CH4: no drops",
+      "status": "PASS",
+      "detail": "0"
+    },
+    {
+      "name": "CH5: frames > 0",
+      "status": "PASS",
+      "detail": "31"
+    },
+    {
+      "name": "CH5: timing OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "CH5: FPS 20-50",
+      "status": "PASS",
+      "detail": "30.7"
+    },
+    {
+      "name": "CH5: no drops",
+      "status": "PASS",
+      "detail": "0"
+    },
+    {
+      "name": "CH6: frames > 0",
+      "status": "PASS",
+      "detail": "31"
+    },
+    {
+      "name": "CH6: timing OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "CH6: FPS 20-50",
+      "status": "PASS",
+      "detail": "30.7"
+    },
+    {
+      "name": "CH6: no drops",
+      "status": "PASS",
+      "detail": "0"
+    },
+    {
+      "name": "CH7: frames > 0",
+      "status": "PASS",
+      "detail": "30"
+    },
+    {
+      "name": "CH7: timing OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "CH7: FPS 20-50",
+      "status": "PASS",
+      "detail": "29.9"
+    },
+    {
+      "name": "CH7: no drops",
+      "status": "PASS",
+      "detail": "0"
+    },
+    {
+      "name": "Play: frames > 0",
+      "status": "PASS",
+      "detail": "14"
+    },
+    {
+      "name": "Seek 0 + Play: frames > 0",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "Brightness 0: T1H \u2248 0",
+      "status": "PASS",
+      "detail": "T1H=0"
+    },
+    {
+      "name": "Brightness 100: T1H restored",
+      "status": "PASS",
+      "detail": "T1H=817"
+    },
+    {
+      "name": "Seek 0ms: frame_id valid",
+      "status": "PASS",
+      "detail": "frame_id=65535 expected\u22480 delay\u22483276750ms"
+    },
+    {
+      "name": "Seek 1000ms: frame_id valid",
+      "status": "PASS",
+      "detail": "frame_id=0 expected\u224820 delay\u22481000ms"
+    },
+    {
+      "name": "Seek 2000ms: frame_id valid",
+      "status": "PASS",
+      "detail": "frame_id=0 expected\u224840 delay\u22482000ms"
+    },
+    {
+      "name": "DISCOVER response",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "DISCOVER has FW version",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "STATUS_RSP received",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "STATUS has uuid=",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "STATUS has sd=ok",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "STATUS has pack=",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "HW_TEST completed",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "HW_TEST: SD OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "HW_TEST: RF OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "HW_TEST: OLED OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "HW_TEST: INA226 OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "HW_TEST: LED OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "HW_TEST: NVS OK",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "HW_TEST: rf_chip",
+      "status": "PASS",
+      "detail": "0x22"
+    },
+    {
+      "name": "HW_TEST: ina_mfr",
+      "status": "PASS",
+      "detail": "0x5449"
+    },
+    {
+      "name": "IDENTIFY sent",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "SET_UUID rejected (already_set)",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "SET_UUID invalid format rejected",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "I2C: OLED (0x3C) detected",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "I2C: INA226 (0x40) detected",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "name": "I2C: transactions > 0",
+      "status": "PASS",
+      "detail": "2448"
+    },
+    {
+      "name": "30x DISCOVER: \u226525 responses",
+      "status": "PASS",
+      "detail": "30/30"
+    },
+    {
+      "name": "10x HW_TEST: \u22658 completed",
+      "status": "PASS",
+      "detail": "10/10"
+    }
+  ]
+}
