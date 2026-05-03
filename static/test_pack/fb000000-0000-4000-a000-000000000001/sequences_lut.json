@@ -5,19 +5,19 @@
     {
       "seq_index": 0,
       "sequence_uuid": "bb000001-0000-4000-a000-000000000001",
-      "name": "Color Verify",
+      "name": "Solid Colors",
       "time_ms": 3000
     },
     {
       "seq_index": 1,
       "sequence_uuid": "bb000002-0000-4000-a000-000000000002",
-      "name": "Channel Independence",
+      "name": "Pixel Address",
       "time_ms": 5000
     },
     {
       "seq_index": 2,
       "sequence_uuid": "bb000003-0000-4000-a000-000000000003",
-      "name": "Frame Rate Stress",
+      "name": "Frame Rate Test",
       "time_ms": 10000
     }
   ]
