@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "version": "2026-05-03T00:00:00Z",
+  "entries": [
+    {
+      "seq_index": 0,
+      "file_uuid": "aa000001-0000-4000-a000-000000000001",
+      "sequence_uuid": "bb000001-0000-4000-a000-000000000001",
+      "sha256": "9b48bd4b56a2f48df400327e70019dc70913c7f3a1faf1a81ad8cbd9eea0490a"
+    },
+    {
+      "seq_index": 1,
+      "file_uuid": "aa000002-0000-4000-a000-000000000002",
+      "sequence_uuid": "bb000002-0000-4000-a000-000000000002",
+      "sha256": "2ff32db0e1c5d3747dd58130469f541006fb40ddf6ce33feb4dc88eb5a3c3ea6"
+    },
+    {
+      "seq_index": 2,
+      "file_uuid": "aa000003-0000-4000-a000-000000000003",
+      "sequence_uuid": "bb000003-0000-4000-a000-000000000003",
+      "sha256": "1e5ea82ad143b2e9f4d790dc1fd28794717aa1a03fe91d6615eba7a392b0826c"
+    }
+  ]
+}

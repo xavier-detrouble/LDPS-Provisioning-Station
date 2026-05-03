@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LDPS Provisioning Station</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e4e4e7;
+      --muted: #71717a;
+      --accent: #3b82f6;
+      --success: #22c55e;
+      --error: #ef4444;
+      --warning: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; }
+
+    /* Nav */
+    .nav { display: flex; align-items: center; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 16px; height: 48px; }
+    .nav-title { font-weight: 700; font-size: 16px; margin-right: 24px; color: var(--accent); }
+    .nav-tabs { display: flex; gap: 4px; }
+    .nav-tab { padding: 8px 16px; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 500; border: none; background: none; }
+    .nav-tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+    .nav-tab.active { color: var(--accent); background: rgba(59,130,246,0.15); }
+    .nav-status { margin-left: auto; display: flex; gap: 12px; font-size: 12px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+    .status-dot.on { background: var(--success); }
+    .status-dot.off { background: var(--error); }
+
+    /* Content */
+    .content { padding: 20px; max-width: 1200px; margin: 0 auto; }
+
+    /* Cards */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+    .card-title { font-weight: 600; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+
+    /* Form elements */
+    .input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 13px; width: 100%; }
+    .input:focus { outline: none; border-color: var(--accent); }
+    select.input { cursor: pointer; }
+    .btn { padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-danger { background: var(--error); color: #fff; }
+    .btn-outline { background: none; border: 1px solid var(--border); color: var(--text); }
+    .btn-outline:hover { border-color: var(--muted); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Wizard */
+    .wizard { display: flex; gap: 24px; }
+    .wizard-steps { width: 240px; flex-shrink: 0; }
+    .wizard-step { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; margin-bottom: 4px; font-size: 13px; color: var(--muted); }
+    .wizard-step.active { background: rgba(59,130,246,0.15); color: var(--accent); font-weight: 600; }
+    .wizard-step.done { color: var(--success); }
+    .wizard-step.fail { color: var(--error); }
+    .wizard-step-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; border: 2px solid currentColor; flex-shrink: 0; }
+    .wizard-step.done .wizard-step-icon { background: var(--success); border-color: var(--success); color: #fff; }
+    .wizard-step.fail .wizard-step-icon { background: var(--error); border-color: var(--error); color: #fff; }
+    .wizard-content { flex: 1; min-width: 0; }
+
+    /* Table */
+    .table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .table th { text-align: left; color: var(--muted); font-weight: 500; padding: 8px; border-bottom: 1px solid var(--border); }
+    .table td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* Big stat */
+    .stat-big { text-align: center; padding: 20px; }
+    .stat-big .number { font-size: 48px; font-weight: 700; }
+    .stat-big .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* Progress bar */
+    .progress { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--accent); transition: width 0.3s; border-radius: 3px; }
+
+    /* Inline flex */
+    .row { display: flex; gap: 8px; align-items: center; }
+    .row-between { display: flex; justify-content: space-between; align-items: center; }
+    .mb-8 { margin-bottom: 8px; }
+    .mb-16 { margin-bottom: 16px; }
+    .text-success { color: var(--success); }
+    .text-error { color: var(--error); }
+    .text-muted { color: var(--muted); }
+    .text-sm { font-size: 12px; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- Nav Bar -->
+  <div class="nav">
+    <div class="nav-title">LDPS Provisioning Station</div>
+    <div class="nav-tabs">
+      <button class="nav-tab" :class="{active: tab === 'setup'}" @click="tab='setup'">Setup</button>
+      <button class="nav-tab" :class="{active: tab === 'dashboard'}" @click="tab='dashboard'">Dashboard</button>
+      <button class="nav-tab" :class="{active: tab === 'provision'}" @click="tab='provision'">Provision</button>
+      <button class="nav-tab" :class="{active: tab === 'history'}" @click="tab='history'">History</button>
+    </div>
+    <div class="nav-status">
+      <span><span class="status-dot" :class="dongleConnected ? 'on' : 'off'"></span>Test Board</span>
+      <span><span class="status-dot" :class="cloudConnected ? 'on' : 'off'"></span>Cloud</span>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- ═══ Setup Tab ═══ -->
+    <div v-if="tab === 'setup'">
+      <div class="card-grid">
+        <!-- Test Board Connection -->
+        <div class="card">
+          <div class="card-title">Test Board / Dongle</div>
+          <div class="row mb-8">
+            <select class="input" v-model="donglePort" style="flex:1">
+              <option value="">Select port...</option>
+              <option v-for="p in serialPorts" :value="p.device">[[ p.device ]] — [[ p.description ]]</option>
+            </select>
+            <button class="btn btn-outline" @click="refreshPorts" title="Refresh">&#x21bb;</button>
+          </div>
+          <button v-if="!dongleConnected" class="btn btn-primary" :disabled="!donglePort" @click="connectDongle">Connect</button>
+          <button v-else class="btn btn-danger" @click="disconnectDongle">Disconnect</button>
+        </div>
+
+        <!-- Cloud Login -->
+        <div class="card">
+          <div class="card-title">Cloud Account</div>
+          <template v-if="!cloudConnected">
+            <input class="input mb-8" v-model="cloudEmail" placeholder="Email" />
+            <input class="input mb-8" v-model="cloudPassword" type="password" placeholder="Password" />
+            <button class="btn btn-primary" @click="cloudLogin">Login</button>
+          </template>
+          <template v-else>
+            <div class="mb-8">Logged in as <strong>[[ cloudEmail ]]</strong></div>
+            <button class="btn btn-outline" @click="cloudLogout">Logout</button>
+          </template>
+        </div>
+
+        <!-- Node Firmware -->
+        <div class="card">
+          <div class="card-title">Node Firmware Flash</div>
+          <div class="row mb-8">
+            <select class="input" v-model="nodePort" style="flex:1">
+              <option value="">Select Node USB port...</option>
+              <option v-for="p in serialPorts" :value="p.device">[[ p.device ]] — [[ p.description ]]</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" :disabled="!nodePort || flashRunning" @click="flashFirmware">
+            [[ flashRunning ? 'Flashing...' : 'Flash Firmware' ]]
+          </button>
+          <div v-if="flashRunning" class="mt-8">
+            <div class="progress mb-8"><div class="progress-fill" :style="{width: flashProgress + '%'}"></div></div>
+            <div class="text-sm text-muted">[[ flashStatus ]]</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Dashboard Tab ═══ -->
+    <div v-if="tab === 'dashboard'">
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-title">Connection Status</div>
+          <div class="mb-8"><span class="status-dot" :class="dongleConnected ? 'on' : 'off'"></span> Test Board: [[ dongleConnected ? donglePort : 'Disconnected' ]]</div>
+          <div class="mb-8"><span class="status-dot" :class="cloudConnected ? 'on' : 'off'"></span> Cloud: [[ cloudConnected ? cloudEmail : 'Not connected' ]]</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Today's Statistics</div>
+          <div style="display:flex;gap:32px;">
+            <div class="stat-big"><div class="number text-success">[[ dbStats.today_success || 0 ]]</div><div class="label">Provisioned Today</div></div>
+            <div class="stat-big"><div class="number text-error">[[ dbStats.today_failed || 0 ]]</div><div class="label">Failed Today</div></div>
+            <div class="stat-big"><div class="number" style="color:var(--accent)">[[ dbStats.total || 0 ]]</div><div class="label">All Time</div></div>
+          </div>
+        </div>
+        <div class="card" v-if="cloudConnected">
+          <div class="row-between mb-8">
+            <div class="card-title" style="margin:0">Quota</div>
+            <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;" @click="loadQuota">Refresh</button>
+          </div>
+          <table class="table" v-if="quotas.length">
+            <tr><th>Product Type</th><th>Quota</th><th>Used</th><th>Remaining</th></tr>
+            <tr v-for="q in quotas">
+              <td>[[ q.product_type ]]</td><td>[[ q.quota ]]</td><td>[[ q.used ]]</td>
+              <td :class="q.quota - q.used > 0 ? 'text-success' : 'text-error'">[[ q.quota - q.used ]]</td>
+            </tr>
+          </table>
+          <div v-else class="text-muted">No quotas assigned</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Provision Tab (Wizard) ═══ -->
+    <div v-if="tab === 'provision'">
+      <div class="wizard">
+        <div class="wizard-steps">
+          <div v-for="(step, i) in wizardSteps" class="wizard-step"
+               :class="{active: wizardIdx === i, done: step.status === 'done', fail: step.status === 'fail'}">
+            <div class="wizard-step-icon">
+              <template v-if="step.status === 'done'">&#x2713;</template>
+              <template v-else-if="step.status === 'fail'">&#x2717;</template>
+              <template v-else>[[ i + 1 ]]</template>
+            </div>
+            [[ step.name ]]
+          </div>
+        </div>
+        <div class="wizard-content">
+          <div class="card">
+            <div class="card-title">[[ wizardSteps[wizardIdx].name ]]</div>
+
+            <!-- Step 0: Flash Firmware -->
+            <div v-if="wizardIdx === 0" style="padding:16px 0;">
+              <div class="row mb-16">
+                <select class="input" v-model="nodePort" style="flex:1">
+                  <option value="">Select Node USB port...</option>
+                  <option v-for="p in serialPorts" :value="p.device">[[ p.device ]]</option>
+                </select>
+                <button class="btn btn-primary" :disabled="!nodePort || flashRunning" @click="wizardFlash">Flash</button>
+                <button class="btn btn-outline" @click="wizardSkip">Skip</button>
+              </div>
+              <div v-if="flashRunning">
+                <div class="progress mb-8"><div class="progress-fill" :style="{width: flashProgress+'%'}"></div></div>
+                <div class="text-sm text-muted">[[ flashStatus ]]</div>
+              </div>
+              <div v-if="flashStatus === 'done'" class="text-success">Firmware flashed successfully</div>
+              <div v-if="flashStatus === 'error'" class="text-error">[[ flashError ]]</div>
+            </div>
+
+            <!-- Step 1: Discover Node -->
+            <div v-if="wizardIdx === 1" style="padding:16px 0;">
+              <button class="btn btn-primary mb-16" :disabled="wizardBusy" @click="wizardDiscover">
+                [[ wizardBusy ? 'Scanning...' : 'Discover Nodes' ]]
+              </button>
+              <div v-if="discoveredNodes.length">
+                <table class="table">
+                  <tr><th>MAC</th><th>Firmware</th><th>UUID</th><th></th></tr>
+                  <tr v-for="n in discoveredNodes" @click="wizardSelectNode(n)" style="cursor:pointer;"
+                      :style="{background: selectedMac === n.mac ? 'rgba(59,130,246,0.15)' : ''}">
+                    <td>[[ n.mac ]]</td><td>[[ n.fw ]]</td>
+                    <td>[[ n.uuid || '(none)' ]]</td>
+                    <td><button class="btn btn-outline" style="padding:4px 8px;font-size:11px;" @click.stop="wizardIdentify(n.mac)">Identify</button></td>
+                  </tr>
+                </table>
+                <button v-if="selectedMac" class="btn btn-primary" style="margin-top:12px;" @click="wizardAdvance">
+                  Select [[ selectedMac ]]
+                </button>
+              </div>
+              <div v-else-if="!wizardBusy" class="text-muted">No nodes found. Click Discover to scan.</div>
+            </div>
+
+            <!-- Step 2: Hardware Test -->
+            <div v-if="wizardIdx === 2" style="padding:16px 0;">
+              <div class="mb-8 text-muted">Node: [[ selectedMac ]]</div>
+              <button class="btn btn-primary mb-16" :disabled="wizardBusy" @click="wizardHwTest">
+                [[ wizardBusy ? 'Testing...' : 'Run Hardware Test' ]]
+              </button>
+              <div v-if="hwTestResults">
+                <table class="table">
+                  <tr><th>Test</th><th>Result</th></tr>
+                  <tr v-for="(val, key) in hwTestResults">
+                    <td>[[ key ]]</td>
+                    <td :class="val === true ? 'text-success' : (val === false ? 'text-error' : '')">[[ val ]]</td>
+                  </tr>
+                </table>
+                <div style="margin-top:12px;">
+                  <button v-if="hwTestPass" class="btn btn-success" @click="wizardAdvance">Tests Passed — Continue</button>
+                  <button v-else class="btn btn-danger" @click="wizardFail('HW_TEST failed')">Tests Failed</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 3: Sync Test Pack -->
+            <div v-if="wizardIdx === 3" style="padding:16px 0;">
+              <div class="mb-8 text-muted">Node: [[ selectedMac ]]</div>
+              <button class="btn btn-primary mb-16" :disabled="wizardBusy" @click="wizardSync">
+                [[ wizardBusy ? 'Syncing...' : 'Sync Test Pack' ]]
+              </button>
+              <div v-if="syncStatus" class="mb-8">[[ syncStatus ]]</div>
+              <div v-if="syncDone" style="margin-top:12px;">
+                <button class="btn btn-success" @click="wizardAdvance">Sync Complete — Continue</button>
+              </div>
+            </div>
+
+            <!-- Step 4: Playback Test (placeholder — needs LDPS-Probe) -->
+            <div v-if="wizardIdx === 4" style="padding:16px 0;">
+              <div class="text-muted mb-16">Playback signal analysis requires LDPS-Probe hardware.</div>
+              <button class="btn btn-outline" @click="wizardAdvance">Skip (no Probe connected)</button>
+            </div>
+
+            <!-- Step 5: Visual Check -->
+            <div v-if="wizardIdx === 5" style="padding:16px 0;">
+              <div class="mb-16">
+                <div class="mb-8">Is the OLED display showing correctly?</div>
+                <div class="row mb-16">
+                  <button class="btn btn-success" @click="visualOled = true" :style="{opacity: visualOled === true ? 1 : 0.5}">Yes</button>
+                  <button class="btn btn-danger" @click="visualOled = false" :style="{opacity: visualOled === false ? 1 : 0.5}">No</button>
+                </div>
+                <div class="mb-8">Are all LED channels lit correctly?</div>
+                <div class="row">
+                  <button class="btn btn-success" @click="visualLed = true" :style="{opacity: visualLed === true ? 1 : 0.5}">Yes</button>
+                  <button class="btn btn-danger" @click="visualLed = false" :style="{opacity: visualLed === false ? 1 : 0.5}">No</button>
+                </div>
+              </div>
+              <div v-if="visualOled !== null && visualLed !== null" style="margin-top:12px;">
+                <button v-if="visualOled && visualLed" class="btn btn-success" @click="wizardAdvance">Visual Check Passed</button>
+                <button v-else class="btn btn-danger" @click="wizardFail('Visual check failed')">Visual Check Failed</button>
+              </div>
+            </div>
+
+            <!-- Step 6: Provision UUID -->
+            <div v-if="wizardIdx === 6" style="padding:16px 0;">
+              <div class="mb-8 text-muted">Node: [[ selectedMac ]]</div>
+              <div class="row mb-16">
+                <select class="input" v-model="productType" style="max-width:200px;">
+                  <option value="default">default</option>
+                  <option value="LED Jacket">LED Jacket</option>
+                  <option value="LED Scarf">LED Scarf</option>
+                  <option value="LED Flag">LED Flag</option>
+                </select>
+                <button class="btn btn-primary" :disabled="wizardBusy" @click="wizardFinalize">
+                  [[ wizardBusy ? 'Provisioning...' : 'Provision Real UUID' ]]
+                </button>
+              </div>
+              <div v-if="provisionResult">
+                <div v-if="provisionResult.ok" class="text-success" style="font-size:18px;font-weight:700;">
+                  UUID: [[ provisionResult.uuid ]]
+                </div>
+                <div v-else class="text-error">[[ provisionResult.error ]]</div>
+              </div>
+            </div>
+
+            <!-- Step 7: Done -->
+            <div v-if="wizardIdx === 7" style="padding:16px 0;text-align:center;">
+              <div style="font-size:64px;margin-bottom:16px;">&#x2705;</div>
+              <div style="font-size:20px;font-weight:700;margin-bottom:8px;">Node Provisioned Successfully</div>
+              <div class="text-muted mb-16">MAC: [[ selectedMac ]] — UUID: [[ provisionResult?.uuid || '?' ]]</div>
+              <button class="btn btn-primary" @click="wizardReset">Provision Next Node</button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ History Tab ═══ -->
+    <div v-if="tab === 'history'">
+      <div class="card">
+        <div class="row-between mb-16">
+          <div class="card-title" style="margin:0">Provision History</div>
+          <div class="row">
+            <input class="input" v-model="historySearch" placeholder="Search MAC/UUID..." style="width:200px;" @input="loadHistory" />
+            <select class="input" v-model="historyFilter" style="width:120px;" @change="loadHistory">
+              <option value="">All</option>
+              <option value="success">Success</option>
+              <option value="test_fail">Test Fail</option>
+              <option value="uuid_fail">UUID Fail</option>
+            </select>
+            <button class="btn btn-outline" @click="loadHistory">Refresh</button>
+          </div>
+        </div>
+        <table class="table" v-if="historyLogs.length">
+          <tr><th>Time</th><th>MAC</th><th>UUID</th><th>Product</th><th>Status</th><th>Error</th></tr>
+          <tr v-for="l in historyLogs">
+            <td class="text-sm">[[ l.timestamp?.slice(0,19) ]]</td>
+            <td>[[ l.mac ]]</td>
+            <td class="text-sm">[[ l.uuid?.slice(0,12) || '-' ]]</td>
+            <td>[[ l.product_type || '-' ]]</td>
+            <td :class="l.status === 'success' ? 'text-success' : 'text-error'">[[ l.status ]]</td>
+            <td class="text-sm text-muted">[[ l.error_reason || '' ]]</td>
+          </tr>
+        </table>
+        <div v-else class="text-muted" style="text-align:center;padding:40px;">No records yet
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+Vue.createApp({
+  delimiters: ['[[', ']]'],
+  data() {
+    return {
+      tab: 'setup',
+
+      // Serial ports
+      serialPorts: [],
+
+      // Dongle / Test Board
+      donglePort: '',
+      dongleConnected: false,
+
+      // Cloud
+      cloudConnected: false,
+      cloudEmail: '',
+      cloudPassword: '',
+
+      // Node flash
+      nodePort: '',
+      flashRunning: false,
+      flashProgress: 0,
+      flashStatus: '',
+
+      // Stats
+      statsProvisioned: 0,
+      statsFailed: 0,
+
+      // Wizard
+      wizardIdx: 0,
+      wizardBusy: false,
+      wizardSteps: [
+        { name: 'Flash Firmware', status: 'pending' },
+        { name: 'Discover Node', status: 'pending' },
+        { name: 'Hardware Test', status: 'pending' },
+        { name: 'Sync Test Pack', status: 'pending' },
+        { name: 'Playback Test', status: 'pending' },
+        { name: 'Visual Check', status: 'pending' },
+        { name: 'Provision UUID', status: 'pending' },
+        { name: 'Done', status: 'pending' },
+      ],
+      discoveredNodes: [],
+      selectedMac: '',
+      hwTestResults: null,
+      syncStatus: '',
+      syncDone: false,
+      visualOled: null,
+      visualLed: null,
+      productType: 'default',
+      provisionResult: null,
+      flashError: '',
+
+      // Dashboard
+      quotas: [],
+      dbStats: {},
+
+      // History
+      historyLogs: [],
+      historySearch: '',
+      historyFilter: '',
+
+      // WebSocket
+      _ws: null,
+    };
+  },
+
+  computed: {
+    hwTestPass() {
+      if (!this.hwTestResults) return false;
+      const r = this.hwTestResults;
+      return r.sd === true && r.rf === true && r.nvs === true && r.led === true;
+    },
+  },
+
+  watch: {
+    tab(val) {
+      if (val === 'dashboard') { this.loadDbStats(); if (this.cloudConnected) this.loadQuota(); }
+      if (val === 'history') this.loadHistory();
+    },
+  },
+
+  mounted() {
+    this.refreshPorts();
+    this.initWebSocket();
+    this.loadDbStats();
+  },
+
+  methods: {
+    // ── Serial Ports ──
+    async refreshPorts() {
+      try {
+        const r = await axios.get('/api/system/ports');
+        this.serialPorts = r.data.ports || [];
+      } catch (e) { this.serialPorts = []; }
+    },
+
+    // ── Dongle ──
+    async connectDongle() {
+      try {
+        const r = await axios.post('/api/dongle/connect', { port: this.donglePort });
+        if (r.data.ok) this.dongleConnected = true;
+      } catch (e) {
+        alert('Connect failed: ' + (e.response?.data?.error || e.message));
+      }
+    },
+    async disconnectDongle() {
+      await axios.post('/api/dongle/disconnect');
+      this.dongleConnected = false;
+    },
+
+    // ── Cloud ──
+    async cloudLogin() {
+      try {
+        const r = await axios.post('/api/cloud/login', { email: this.cloudEmail, password: this.cloudPassword });
+        if (r.data.ok) { this.cloudConnected = true; this.cloudPassword = ''; }
+      } catch (e) {
+        alert('Login failed: ' + (e.response?.data?.error || e.message));
+      }
+    },
+    async cloudLogout() {
+      await axios.post('/api/cloud/logout');
+      this.cloudConnected = false;
+      this.cloudEmail = '';
+    },
+
+    // ── Flash ──
+    async flashFirmware() {
+      try {
+        await axios.post('/api/flash/start', { port: this.nodePort });
+      } catch (e) {
+        alert('Flash failed: ' + (e.response?.data?.error || e.message));
+      }
+    },
+
+    // ── Wizard ──
+    wizardAdvance() {
+      this.wizardSteps[this.wizardIdx].status = 'done';
+      this.wizardIdx++;
+      this.wizardBusy = false;
+    },
+    wizardSkip() {
+      this.wizardSteps[this.wizardIdx].status = 'done';
+      this.wizardIdx++;
+    },
+    wizardFail(reason) {
+      this.wizardSteps[this.wizardIdx].status = 'fail';
+      this.statsFailed++;
+      alert('FAIL: ' + reason);
+    },
+    wizardReset() {
+      this.wizardIdx = 0;
+      this.wizardSteps.forEach(s => s.status = 'pending');
+      this.discoveredNodes = [];
+      this.selectedMac = '';
+      this.hwTestResults = null;
+      this.syncStatus = '';
+      this.syncDone = false;
+      this.visualOled = null;
+      this.visualLed = null;
+      this.provisionResult = null;
+    },
+    async wizardFlash() {
+      await this.flashFirmware();
+      // Flash status tracked via WebSocket; advance when done
+    },
+    async wizardDiscover() {
+      this.wizardBusy = true;
+      this.discoveredNodes = [];
+      try {
+        const r = await axios.post('/api/provision/discover');
+        this.discoveredNodes = r.data.nodes || [];
+      } catch (e) { /* handled by WS */ }
+      this.wizardBusy = false;
+    },
+    wizardSelectNode(node) {
+      this.selectedMac = node.mac;
+    },
+    async wizardIdentify(mac) {
+      await axios.post('/api/provision/identify/' + mac);
+    },
+    async wizardHwTest() {
+      this.wizardBusy = true;
+      this.hwTestResults = null;
+      try {
+        const r = await axios.post('/api/provision/hw-test/' + this.selectedMac);
+        this.hwTestResults = r.data.test_results;
+      } catch (e) {
+        this.hwTestResults = { error: e.response?.data?.error || e.message };
+      }
+      this.wizardBusy = false;
+    },
+    async wizardSync() {
+      this.wizardBusy = true;
+      this.syncStatus = 'Sending fake UUID + WiFi config...';
+      this.syncDone = false;
+      try {
+        const r = await axios.post('/api/provision/sync/' + this.selectedMac, {});
+        this.syncStatus = 'Sync triggered. Waiting for Node to download...';
+        // Poll STATUS_REQ for need_count=0 (simplified: wait 15s)
+        setTimeout(() => { this.syncStatus = 'Sync assumed complete (check Node display)'; this.syncDone = true; }, 15000);
+      } catch (e) {
+        this.syncStatus = 'Sync failed: ' + (e.response?.data?.error || e.message);
+      }
+      this.wizardBusy = false;
+    },
+    async wizardFinalize() {
+      this.wizardBusy = true;
+      this.provisionResult = null;
+      try {
+        const r = await axios.post('/api/provision/finalize/' + this.selectedMac, {
+          product_type: this.productType,
+          test_results: this.hwTestResults,
+        });
+        this.provisionResult = r.data;
+        if (r.data.ok) {
+          this.wizardAdvance();
+        }
+      } catch (e) {
+        this.provisionResult = { ok: false, error: e.response?.data?.error || e.message };
+      }
+      this.wizardBusy = false;
+    },
+
+    // ── Dashboard + History ──
+    async loadQuota() {
+      try {
+        const r = await axios.get('/api/cloud/quota');
+        this.quotas = r.data.quotas || [];
+      } catch (e) { this.quotas = []; }
+    },
+    async loadDbStats() {
+      try {
+        const r = await axios.get('/api/history/stats');
+        this.dbStats = r.data;
+        this.statsProvisioned = r.data.today_success || 0;
+        this.statsFailed = r.data.today_failed || 0;
+      } catch (e) { /* silent */ }
+    },
+    async loadHistory() {
+      try {
+        const r = await axios.get('/api/history/', { params: { search: this.historySearch, status: this.historyFilter } });
+        this.historyLogs = r.data.logs || [];
+      } catch (e) { this.historyLogs = []; }
+    },
+
+    // ── WebSocket ──
+    initWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      this._ws = new WebSocket(protocol + '//' + window.location.host + '/ws');
+      this._ws.onmessage = (evt) => {
+        const msg = JSON.parse(evt.data);
+        this.onWsMessage(msg.topic, msg.data);
+      };
+      this._ws.onclose = () => {
+        setTimeout(() => this.initWebSocket(), 3000);
+      };
+    },
+
+    onWsMessage(topic, data) {
+      if (topic === 'dongle') {
+        this.dongleConnected = data.connected;
+      } else if (topic === 'cloud') {
+        this.cloudConnected = data.connected;
+        if (data.email) this.cloudEmail = data.email;
+      } else if (topic === 'flash') {
+        this.flashRunning = data.running;
+        this.flashProgress = data.progress || 0;
+        this.flashStatus = data.status || '';
+        this.flashError = data.error || '';
+        if (data.status === 'done' && this.wizardIdx === 0) this.wizardAdvance();
+      } else if (topic === 'discovered') {
+        this.discoveredNodes = data.nodes || [];
+      } else if (topic === 'stats') {
+        this.statsProvisioned = data.provisioned || 0;
+        this.statsFailed = data.failed || 0;
+      }
+    },
+  },
+}).mount('#app');
+</script>
+</body>
+</html>
