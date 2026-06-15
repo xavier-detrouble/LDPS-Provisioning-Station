@@ -200,7 +200,7 @@ async def finalize(request: Request, mac: str, data: dict = Body(...)):
     if not getattr(s, "provision_log", None):
         s.provision_log = ProvisionLog()
     s.provision_log.add(
-        mac=mac, uuid=uuid,
+        mac=mac, uuid=uuid, product_type=product_type,
         firmware_ver=firmware_ver or "?", test_results=test_results,
         status="success", cloud_confirmed=confirmed,
     )
