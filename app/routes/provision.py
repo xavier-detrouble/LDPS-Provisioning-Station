@@ -15,7 +15,6 @@ router = APIRouter()
 
 # Pending ACK trackers with TTL cleanup
 _pending_hw_test: dict[str, dict] = {}
-_pending_set_uuid: dict[str, dict] = {}
 _pending_nvs_erase: dict[str, dict] = {}
 _pending_status: dict[str, dict] = {}
 _PENDING_TTL = 30  # seconds before auto-cleanup
@@ -44,15 +43,6 @@ def handle_hw_test_result(mac: str, parts: list[str]) -> None:
     pending = _pending_hw_test.get(mac)
     if pending:
         pending["result"] = result
-        pending["event"].set()
-
-
-def handle_set_uuid_ack(mac: str, parts: list[str]) -> None:
-    status = parts[1] if len(parts) > 1 else "?"
-    ack_uuid = parts[2] if len(parts) > 2 else ""
-    pending = _pending_set_uuid.get(mac)
-    if pending:
-        pending["result"] = f"{status},{ack_uuid}"
         pending["event"].set()
 
 
@@ -127,50 +117,6 @@ async def hw_test(request: Request, mac: str):
         _pending_hw_test.pop(mac, None)
 
 
-# ── Sync Test Pack ────────────────────────────────────
-
-@router.post("/sync/{mac}")
-async def sync_test_pack(request: Request, mac: str, data: dict = Body({})):
-    """Write fake UUID → push WiFi config → trigger SYNC_PACKS."""
-    s = _s(request)
-    if not s.espnow:
-        return JSONResponse({"error": "Dongle not connected"}, 503)
-
-    from app.config import FAKE_UUID
-
-    # Step 1: Write fake UUID
-    _cleanup_stale(_pending_set_uuid)
-    evt = Event()
-    _pending_set_uuid[mac] = {"event": evt, "result": "", "ts": time.time()}
-    s.espnow.set_uuid(mac, FAKE_UUID)
-
-    uuid_ok = evt.wait(timeout=5)
-    uuid_result = _pending_set_uuid.pop(mac, {}).get("result", "")
-
-    if not uuid_ok:
-        return JSONResponse({"error": "SET_UUID timeout"}, 408)
-
-    if "err,already_set" in uuid_result:
-        log(f"[Provision] {mac}: UUID already set, proceeding with existing")
-
-    # Step 2: Push WiFi config (Station AP)
-    wifi_ssid = data.get("wifi_ssid", "LDPS-Factory")
-    wifi_pwd = data.get("wifi_pwd", "ldps1234")
-    station_ip = data.get("station_ip", "192.168.4.1:9000")
-
-    s.espnow.push_config(mac, "wifi", f"{wifi_ssid},{wifi_pwd},{station_ip}")
-    time.sleep(0.2)
-
-    # Step 3: Switch to test pack (index 0)
-    s.espnow.switch_pack(mac, 0)
-    time.sleep(0.2)
-
-    # Step 4: Trigger sync
-    s.espnow.sync_packs(mac)
-
-    return {"ok": True, "fake_uuid": FAKE_UUID, "wifi": wifi_ssid}
-
-
 # ── NVS Erase ─────────────────────────────────────────
 
 @router.post("/nvs-erase/{mac}")
@@ -192,33 +138,6 @@ async def nvs_erase(request: Request, mac: str):
     if "ok" in result:
         return {"ok": True}
     return JSONResponse({"error": f"NVS_ERASE failed: {result}"}, 500)
-
-
-# ── SET_UUID (real UUID) ──────────────────────────────
-
-@router.post("/set-uuid/{mac}")
-async def set_uuid(request: Request, mac: str, data: dict = Body(...)):
-    s = _s(request)
-    if not s.espnow:
-        return JSONResponse({"error": "Dongle not connected"}, 503)
-
-    uuid = data.get("uuid", "")
-    if not uuid:
-        return JSONResponse({"error": "uuid required"}, 400)
-
-    _cleanup_stale(_pending_set_uuid)
-    evt = Event()
-    _pending_set_uuid[mac] = {"event": evt, "result": "", "ts": time.time()}
-    s.espnow.set_uuid(mac, uuid)
-
-    if not evt.wait(timeout=5):
-        _pending_set_uuid.pop(mac, None)
-        return JSONResponse({"error": "SET_UUID timeout"}, 408)
-
-    result = _pending_set_uuid.pop(mac, {}).get("result", "")
-    if "ok" in result:
-        return {"ok": True, "uuid": uuid}
-    return JSONResponse({"error": f"SET_UUID failed: {result}"}, 500)
 
 
 # ── Finalize (USB provision: cloud UUID + genuineness → write over USB) ──

@@ -45,11 +45,6 @@ def _setup_espnow_handler(state: AppState, espnow) -> None:
             from app.routes.provision import handle_hw_test_result
             handle_hw_test_result(mac, parts)
 
-        elif cmd == "SET_UUID_ACK":
-            log(f"[ESPNow] {mac}: SET_UUID_ACK {payload}")
-            from app.routes.provision import handle_set_uuid_ack
-            handle_set_uuid_ack(mac, parts)
-
         elif cmd == "NVS_ERASE_ACK":
             log(f"[ESPNow] {mac}: NVS_ERASE_ACK {payload}")
             from app.routes.provision import handle_nvs_erase_ack
@@ -64,6 +59,9 @@ def _setup_espnow_handler(state: AppState, espnow) -> None:
                     kv[k] = v
             if state.ws and kv.get("uuid"):
                 state.ws.broadcast("node_status", {"mac": mac, **kv})
+            # Also notify provision route for NVS read-back verification
+            from app.routes.provision import handle_status_rsp
+            handle_status_rsp(mac, payload)
 
         elif cmd in ("SYNC_ACK", "SWITCH_PACK_ACK", "CFG_ACK", "PONG"):
             log(f"[ESPNow] {mac}: {payload}")

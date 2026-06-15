@@ -1,6 +1,6 @@
 """ESP-NOW channel — simplified for Provisioning Station.
 
-Only needs: DISCOVER, IDENTIFY, HW_TEST, SET_UUID, NVS_ERASE, CFG, SYNC_PACKS, STATUS_REQ
+Only needs: DISCOVER, IDENTIFY, HW_TEST, NVS_ERASE, CFG, SYNC_PACKS, STATUS_REQ
 """
 from __future__ import annotations
 
@@ -43,9 +43,6 @@ class ESPNowChannel:
 
     def hw_test(self, mac: str) -> bool:
         return self.send_command(mac, "HW_TEST")
-
-    def set_uuid(self, mac: str, uuid: str) -> bool:
-        return self.send_command(mac, "SET_UUID", uuid)
 
     def nvs_erase(self, mac: str) -> bool:
         return self.send_command(mac, "NVS_ERASE")
