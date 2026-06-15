@@ -1,4 +1,8 @@
-"""Cloud API client for provisioning operations."""
+"""Cloud API client for provisioning operations.
+
+Uses manufacturer API key authentication (X-Manufacturer-Key header).
+Completely separate from Supabase Auth — manufacturers cannot access Studio.
+"""
 from __future__ import annotations
 
 import httpx
@@ -8,40 +12,56 @@ from app.utils import log
 class CloudClient:
     def __init__(self, cloud_url: str):
         self.cloud_url = cloud_url.rstrip("/")
-        self.token: str = ""
-        self.email: str = ""
+        self.api_key: str = ""
+        self.manufacturer_id: str = ""
+        self.manufacturer_name: str = ""
+        self.quotas: list = []
 
     def _headers(self) -> dict:
-        return {"Authorization": f"Bearer {self.token}"} if self.token else {}
+        return {"X-Manufacturer-Key": self.api_key} if self.api_key else {}
 
-    async def login(self, email: str, password: str) -> dict:
+    async def login(self, api_key: str) -> dict:
+        """Authenticate with manufacturer API key."""
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.post(f"{self.cloud_url}/api/cloud/login",
-                                      json={"email": email, "password": password})
+                r = await client.post(f"{self.cloud_url}/provision/login",
+                                      json={"api_key": api_key})
             if r.status_code == 200:
                 data = r.json()
                 if data.get("ok"):
-                    self.token = data.get("token", "")
-                    self.email = email
-                    return {"ok": True, "email": email, "name": data.get("name", "")}
-            return {"ok": False, "error": r.json().get("error", "Login failed")}
+                    self.api_key = api_key
+                    self.manufacturer_id = data.get("manufacturer_id", "")
+                    self.manufacturer_name = data.get("name", "")
+                    self.quotas = data.get("quotas", [])
+                    return {
+                        "ok": True,
+                        "name": self.manufacturer_name,
+                        "manufacturer_id": self.manufacturer_id,
+                        "quotas": self.quotas,
+                    }
+            err = "Invalid API key"
+            try:
+                err = r.json().get("error", err)
+            except Exception:
+                pass
+            return {"ok": False, "error": err}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
     async def get_quota(self) -> list:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                r = await client.get(f"{self.cloud_url}/admin/provision/stats",
-                                     headers=self._headers())
-            if r.status_code == 200:
-                return r.json().get("quotas", [])
+        """Re-fetch quotas from login endpoint."""
+        if not self.api_key:
             return []
-        except Exception:
-            return []
+        result = await self.login(self.api_key)
+        return result.get("quotas", self.quotas)
 
-    async def request_uuid(self, hardware_serial: str, product_type: str = "default",
-                           test_results: dict = None, firmware_ver: str = "") -> str | None:
+    async def request_uuid(self, hardware_serial: str, product_type: str,
+                           test_results: dict = None, firmware_ver: str = "") -> dict | None:
+        """Mint a node UUID. product_type is REQUIRED (cloud QC gate). Returns
+        {uuid, signature, key_id} — signature is the cloud's Ed25519 genuineness
+        sig over the UUID, written to the node over USB and verified by Hubs.
+        Returns None on failure (signature/key_id may be None if cloud signing
+        is not configured; the UUID is still minted)."""
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.post(f"{self.cloud_url}/provision/request-uuid",
@@ -53,7 +73,10 @@ class CloudClient:
                                       },
                                       headers=self._headers())
             if r.status_code == 200:
-                return r.json().get("uuid")
+                d = r.json()
+                return {"uuid": d.get("uuid"),
+                        "signature": d.get("signature"),
+                        "key_id": d.get("key_id")}
             log(f"[Cloud] request-uuid failed: {r.status_code} {r.text}", "WARNING")
             return None
         except Exception as e:
