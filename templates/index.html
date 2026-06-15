@@ -130,12 +130,11 @@
           <button v-else class="btn btn-danger" @click="disconnectDongle">Disconnect</button>
         </div>
 
-        <!-- Cloud Login -->
+        <!-- Manufacturer Login (API Key) -->
         <div class="card">
-          <div class="card-title">Cloud Account</div>
+          <div class="card-title">Manufacturer Login</div>
           <template v-if="!cloudConnected">
-            <input class="input mb-8" v-model="cloudEmail" placeholder="Email" />
-            <input class="input mb-8" v-model="cloudPassword" type="password" placeholder="Password" />
+            <input class="input mb-8" v-model="apiKey" type="password" placeholder="API Key (mfr_xxxx...)" />
             <button class="btn btn-primary" @click="cloudLogin">Login</button>
           </template>
           <template v-else>
@@ -288,10 +287,33 @@
               </div>
             </div>
 
-            <!-- Step 4: Playback Test (placeholder — needs LDPS-Probe) -->
+            <!-- Step 4: Playback Test (via LDPS-Probe) -->
             <div v-if="wizardIdx === 4" style="padding:16px 0;">
-              <div class="text-muted mb-16">Playback signal analysis requires LDPS-Probe hardware.</div>
-              <button class="btn btn-outline" @click="wizardAdvance">Skip (no Probe connected)</button>
+              <div class="mb-8 text-muted">Node: [[ selectedMac ]]</div>
+              <div class="row mb-16">
+                <button class="btn btn-primary" :disabled="wizardBusy" @click="wizardPlaybackTest">
+                  [[ wizardBusy ? 'Testing...' : 'Run Playback Test' ]]
+                </button>
+                <button class="btn btn-outline" @click="wizardAdvance">Skip</button>
+              </div>
+              <div v-if="playbackStatus" class="mb-8 text-sm text-muted">[[ playbackStatus ]]</div>
+              <div v-if="playbackResults">
+                <table class="table">
+                  <tr><th>CH</th><th>Frames</th><th>FPS</th><th>Timing</th><th>Drops</th><th>Result</th></tr>
+                  <tr v-for="t in playbackResults">
+                    <td>[[ t.channel ]]</td>
+                    <td>[[ t.frames ]]</td>
+                    <td>[[ t.fps ]]</td>
+                    <td :class="t.timing_ok ? 'text-success' : 'text-error'">[[ t.timing_ok ? 'OK' : 'FAIL' ]]</td>
+                    <td>[[ t.drops ]]</td>
+                    <td :class="t.pass ? 'text-success' : 'text-error'">[[ t.pass ? 'PASS' : 'FAIL' ]]</td>
+                  </tr>
+                </table>
+                <div style="margin-top:12px;">
+                  <button v-if="playbackPass" class="btn btn-success" @click="wizardAdvance">Playback Test Passed</button>
+                  <button v-else class="btn btn-danger" @click="wizardFail('Playback test failed')">Test Failed</button>
+                </div>
+              </div>
             </div>
 
             <!-- Step 5: Visual Check -->
@@ -317,13 +339,7 @@
             <!-- Step 6: Provision UUID -->
             <div v-if="wizardIdx === 6" style="padding:16px 0;">
               <div class="mb-8 text-muted">Node: [[ selectedMac ]]</div>
-              <div class="row mb-16">
-                <select class="input" v-model="productType" style="max-width:200px;">
-                  <option value="default">default</option>
-                  <option value="LED Jacket">LED Jacket</option>
-                  <option value="LED Scarf">LED Scarf</option>
-                  <option value="LED Flag">LED Flag</option>
-                </select>
+              <div class="mb-16">
                 <button class="btn btn-primary" :disabled="wizardBusy" @click="wizardFinalize">
                   [[ wizardBusy ? 'Provisioning...' : 'Provision Real UUID' ]]
                 </button>
@@ -398,14 +414,15 @@ Vue.createApp({
       donglePort: '',
       dongleConnected: false,
 
-      // Cloud
+      // Cloud (manufacturer API key)
       cloudConnected: false,
-      cloudEmail: '',
-      cloudPassword: '',
+      cloudEmail: '',  // displays manufacturer name
+      apiKey: '',
 
       // Node flash
       nodePort: '',
       flashRunning: false,
+      provisionProductType: 'default',  // sent to cloud request-uuid (QC gate)
       flashProgress: 0,
       flashStatus: '',
 
@@ -433,9 +450,11 @@ Vue.createApp({
       syncDone: false,
       visualOled: null,
       visualLed: null,
-      productType: 'default',
       provisionResult: null,
       flashError: '',
+      playbackResults: null,
+      playbackPass: false,
+      playbackStatus: '',
 
       // Dashboard
       quotas: [],
@@ -498,8 +517,12 @@ Vue.createApp({
     // ── Cloud ──
     async cloudLogin() {
       try {
-        const r = await axios.post('/api/cloud/login', { email: this.cloudEmail, password: this.cloudPassword });
-        if (r.data.ok) { this.cloudConnected = true; this.cloudPassword = ''; }
+        const r = await axios.post('/api/cloud/login', { api_key: this.apiKey });
+        if (r.data.ok) {
+          this.cloudConnected = true;
+          this.cloudEmail = r.data.name || 'Manufacturer';
+          this.apiKey = '';  // clear from UI
+        }
       } catch (e) {
         alert('Login failed: ' + (e.response?.data?.error || e.message));
       }
@@ -542,6 +565,9 @@ Vue.createApp({
       this.hwTestResults = null;
       this.syncStatus = '';
       this.syncDone = false;
+      this.playbackResults = null;
+      this.playbackPass = false;
+      this.playbackStatus = '';
       this.visualOled = null;
       this.visualLed = null;
       this.provisionResult = null;
@@ -576,6 +602,22 @@ Vue.createApp({
       }
       this.wizardBusy = false;
     },
+    async wizardPlaybackTest() {
+      this.wizardBusy = true;
+      this.playbackResults = null;
+      this.playbackPass = false;
+      this.playbackStatus = 'Starting WS2812 signal capture (8 channels, ~20s)...';
+      try {
+        const r = await axios.post('/api/provision/playback-test/' + this.selectedMac, {}, { timeout: 30000 });
+        this.playbackResults = r.data.tests || [];
+        this.playbackPass = r.data.pass || false;
+        this.playbackStatus = this.playbackPass ? 'All channels passed' : 'Some channels failed';
+      } catch (e) {
+        this.playbackStatus = 'Playback test failed: ' + (e.response?.data?.error || e.message);
+        this.playbackResults = null;
+      }
+      this.wizardBusy = false;
+    },
     async wizardSync() {
       this.wizardBusy = true;
       this.syncStatus = 'Sending fake UUID + WiFi config...';
@@ -595,7 +637,8 @@ Vue.createApp({
       this.provisionResult = null;
       try {
         const r = await axios.post('/api/provision/finalize/' + this.selectedMac, {
-          product_type: this.productType,
+          port: this.nodePort,                       // node USB port (identity written over USB)
+          product_type: this.provisionProductType,   // required by cloud QC gate
           test_results: this.hwTestResults,
         });
         this.provisionResult = r.data;
@@ -657,6 +700,9 @@ Vue.createApp({
         if (data.status === 'done' && this.wizardIdx === 0) this.wizardAdvance();
       } else if (topic === 'discovered') {
         this.discoveredNodes = data.nodes || [];
+      } else if (topic === 'playback_test') {
+        if (data.status === 'starting') this.playbackStatus = 'Capture in progress...';
+        else if (data.status === 'result_received') this.playbackStatus = 'Analyzing results...';
       } else if (topic === 'stats') {
         this.statsProvisioned = data.provisioned || 0;
         this.statsFailed = data.failed || 0;
