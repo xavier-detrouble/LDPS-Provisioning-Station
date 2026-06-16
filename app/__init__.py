@@ -45,11 +45,6 @@ def _setup_espnow_handler(state: AppState, espnow) -> None:
             from app.routes.provision import handle_hw_test_result
             handle_hw_test_result(mac, parts)
 
-        elif cmd == "NVS_ERASE_ACK":
-            log(f"[ESPNow] {mac}: NVS_ERASE_ACK {payload}")
-            from app.routes.provision import handle_nvs_erase_ack
-            handle_nvs_erase_ack(mac, parts)
-
         elif cmd == "STATUS_RSP":
             # Parse key=value pairs for sync progress tracking
             kv = {}

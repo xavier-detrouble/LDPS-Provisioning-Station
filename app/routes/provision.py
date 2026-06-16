@@ -15,7 +15,6 @@ router = APIRouter()
 
 # Pending ACK trackers with TTL cleanup
 _pending_hw_test: dict[str, dict] = {}
-_pending_nvs_erase: dict[str, dict] = {}
 _pending_status: dict[str, dict] = {}
 _PENDING_TTL = 30  # seconds before auto-cleanup
 
@@ -43,14 +42,6 @@ def handle_hw_test_result(mac: str, parts: list[str]) -> None:
     pending = _pending_hw_test.get(mac)
     if pending:
         pending["result"] = result
-        pending["event"].set()
-
-
-def handle_nvs_erase_ack(mac: str, parts: list[str]) -> None:
-    status = parts[1] if len(parts) > 1 else "?"
-    pending = _pending_nvs_erase.get(mac)
-    if pending:
-        pending["result"] = status
         pending["event"].set()
 
 
@@ -115,29 +106,6 @@ async def hw_test(request: Request, mac: str):
         return {"ok": True, "mac": mac, "test_results": result}
     finally:
         _pending_hw_test.pop(mac, None)
-
-
-# ── NVS Erase ─────────────────────────────────────────
-
-@router.post("/nvs-erase/{mac}")
-async def nvs_erase(request: Request, mac: str):
-    s = _s(request)
-    if not s.espnow:
-        return JSONResponse({"error": "Dongle not connected"}, 503)
-
-    _cleanup_stale(_pending_nvs_erase)
-    evt = Event()
-    _pending_nvs_erase[mac] = {"event": evt, "result": "", "ts": time.time()}
-    s.espnow.nvs_erase(mac)
-
-    if not evt.wait(timeout=5):
-        _pending_nvs_erase.pop(mac, None)
-        return JSONResponse({"error": "NVS_ERASE timeout"}, 408)
-
-    result = _pending_nvs_erase.pop(mac, {}).get("result", "")
-    if "ok" in result:
-        return {"ok": True}
-    return JSONResponse({"error": f"NVS_ERASE failed: {result}"}, 500)
 
 
 # ── Finalize (USB provision: cloud UUID + genuineness → write over USB) ──
