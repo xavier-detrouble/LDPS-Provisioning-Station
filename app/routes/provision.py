@@ -209,8 +209,8 @@ async def playback_test(request: Request, mac: str):
         return JSONResponse({"error": "Dongle not connected"}, 503)
 
     from app.config import TEST_PACK_UUID
-    # CRC-8/MAXIM of test pack UUID
-    pack_id = _crc8_maxim(TEST_PACK_UUID.encode())
+    # CRC-16/CCITT of the test pack UUID — matches Edge-Node packIdFromUuid (RF v2, ADR-016).
+    pack_id = _crc16_ccitt(TEST_PACK_UUID.encode())
 
     # Setup pending capture
     _cleanup_stale(_pending_capture)
@@ -283,11 +283,15 @@ async def playback_test(request: Request, mac: str):
     }
 
 
-def _crc8_maxim(data: bytes) -> int:
-    crc = 0
+def _crc16_ccitt(data: bytes) -> int:
+    # MUST match Edge-Node packIdFromUuid (system_context.h): CRC-16/CCITT-FALSE
+    # (init 0xFFFF, poly 0x1021, MSB-first) over the UUID string bytes; 0 -> 1 (0 is
+    # reserved for "no pack"). The node filters RF frames on this pack_id (ADR-016 v2);
+    # the old CRC-8 made the node reject the Probe's test frames so playback QC couldn't pass.
+    crc = 0xFFFF
     for byte in data:
-        crc ^= byte
+        crc ^= (byte << 8)
         for _ in range(8):
-            crc = ((crc << 1) ^ 0x31) if (crc & 0x80) else (crc << 1)
-            crc &= 0xFF
-    return crc
+            crc = ((crc << 1) ^ 0x1021) if (crc & 0x8000) else (crc << 1)
+            crc &= 0xFFFF
+    return crc or 1
