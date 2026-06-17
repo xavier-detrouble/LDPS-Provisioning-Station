@@ -141,6 +141,9 @@ async def finalize(request: Request, mac: str, data: dict = Body(...)):
     uuid = minted["uuid"]
     sig = minted.get("signature")
     key_id = minted.get("key_id")
+    # recovery_key: returned ONCE by the cloud (plaintext), never written to the node — the
+    # operator prints it on the box for re-claim (§3.4). Surfaced to the UI + recorded locally.
+    recovery_key = minted.get("recovery_key") or ""
     if not sig or not key_id:
         # Genuineness is mandatory — a node with no signature can't be Hub-verified.
         await s.cloud_client.confirm(uuid, success=False)
@@ -170,16 +173,18 @@ async def finalize(request: Request, mac: str, data: dict = Body(...)):
     s.provision_log.add(
         mac=mac, uuid=uuid, product_type=product_type,
         firmware_ver=firmware_ver or "?", test_results=test_results,
-        status="success", cloud_confirmed=confirmed,
+        status="success", cloud_confirmed=confirmed, recovery_key=recovery_key,
     )
 
     s.stats_provisioned += 1
     if s.ws:
         s.ws.broadcast("stats", {"provisioned": s.stats_provisioned, "failed": s.stats_failed})
-        s.ws.broadcast("provision", {"step": "done", "mac": mac, "uuid": uuid})
+        s.ws.broadcast("provision", {"step": "done", "mac": mac, "uuid": uuid,
+                                     "recovery_key": recovery_key})
 
-    log(f"[Provision] SUCCESS (USB): {mac} → {uuid} (key_id={key_id})")
-    return {"ok": True, "mac": mac, "uuid": uuid, "key_id": key_id, "cloud_confirmed": confirmed}
+    log(f"[Provision] SUCCESS (USB): {mac} → {uuid} (key_id={key_id})")  # recovery_key NOT logged
+    return {"ok": True, "mac": mac, "uuid": uuid, "key_id": key_id,
+            "recovery_key": recovery_key, "cloud_confirmed": confirmed}
 
 
 # ── Playback Test (LDPS-Probe) ───────────────────────

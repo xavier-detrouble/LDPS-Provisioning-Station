@@ -345,8 +345,15 @@
                 </button>
               </div>
               <div v-if="provisionResult">
-                <div v-if="provisionResult.ok" class="text-success" style="font-size:18px;font-weight:700;">
-                  UUID: [[ provisionResult.uuid ]]
+                <div v-if="provisionResult.ok">
+                  <div class="text-success" style="font-size:18px;font-weight:700;">
+                    UUID: [[ provisionResult.uuid ]]
+                  </div>
+                  <div v-if="provisionResult.recovery_key"
+                       style="margin-top:12px;padding:12px;border:2px solid var(--accent);border-radius:8px;background:rgba(59,130,246,0.08);">
+                    <div class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:1px;">Recovery key — print on the box (shown once)</div>
+                    <div style="font-size:22px;font-weight:700;letter-spacing:2px;font-family:monospace;">[[ provisionResult.recovery_key ]]</div>
+                  </div>
                 </div>
                 <div v-else class="text-error">[[ provisionResult.error ]]</div>
               </div>
@@ -357,6 +364,11 @@
               <div style="font-size:64px;margin-bottom:16px;">&#x2705;</div>
               <div style="font-size:20px;font-weight:700;margin-bottom:8px;">Node Provisioned Successfully</div>
               <div class="text-muted mb-16">MAC: [[ selectedMac ]] — UUID: [[ provisionResult?.uuid || '?' ]]</div>
+              <div v-if="provisionResult?.recovery_key"
+                   style="margin:0 auto 16px;max-width:380px;padding:14px;border:2px solid var(--accent);border-radius:8px;background:rgba(59,130,246,0.08);">
+                <div class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:1px;">Recovery key — print on the box</div>
+                <div style="font-size:26px;font-weight:700;letter-spacing:3px;font-family:monospace;">[[ provisionResult.recovery_key ]]</div>
+              </div>
               <button class="btn btn-primary" @click="wizardReset">Provision Next Node</button>
             </div>
 
@@ -382,12 +394,13 @@
           </div>
         </div>
         <table class="table" v-if="historyLogs.length">
-          <tr><th>Time</th><th>MAC</th><th>UUID</th><th>Product</th><th>Status</th><th>Error</th></tr>
+          <tr><th>Time</th><th>MAC</th><th>UUID</th><th>Product</th><th>Recovery</th><th>Status</th><th>Error</th></tr>
           <tr v-for="l in historyLogs">
             <td class="text-sm">[[ l.timestamp?.slice(0,19) ]]</td>
             <td>[[ l.mac ]]</td>
             <td class="text-sm">[[ l.uuid?.slice(0,12) || '-' ]]</td>
             <td>[[ l.product_type || '-' ]]</td>
+            <td class="text-sm" style="font-family:monospace;">[[ l.recovery_key || '-' ]]</td>
             <td :class="l.status === 'success' ? 'text-success' : 'text-error'">[[ l.status ]]</td>
             <td class="text-sm text-muted">[[ l.error_reason || '' ]]</td>
           </tr>
@@ -422,7 +435,7 @@ Vue.createApp({
       // Node flash
       nodePort: '',
       flashRunning: false,
-      provisionProductType: 'default',  // sent to cloud request-uuid (QC gate)
+      provisionProductType: 'LED Node',  // sent to cloud request-uuid (QC gate); no 'default' (operator picker = F-build)
       flashProgress: 0,
       flashStatus: '',
 

@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS provision_logs (
     status TEXT NOT NULL,
     error_reason TEXT,
     batch TEXT,
-    cloud_confirmed INTEGER DEFAULT 0
+    cloud_confirmed INTEGER DEFAULT 0,
+    recovery_key TEXT
 );
 """
 
@@ -32,23 +33,29 @@ class ProvisionLog:
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute(_CREATE_SQL)
+        # Idempotent migration: add recovery_key to an existing DB (CREATE IF NOT EXISTS
+        # won't add the column to a table created before recovery keys existed).
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(provision_logs)")}
+        if "recovery_key" not in cols:
+            self._conn.execute("ALTER TABLE provision_logs ADD COLUMN recovery_key TEXT")
         self._conn.commit()
 
     def add(self, mac: str, uuid: Optional[str], product_type: str,
             firmware_ver: str, test_results: Optional[dict],
             status: str, error_reason: str = "", batch: str = "",
-            cloud_confirmed: bool = False) -> int:
+            cloud_confirmed: bool = False, recovery_key: str = "") -> int:
         cur = self._conn.execute(
             """INSERT INTO provision_logs
                (timestamp, mac, uuid, product_type, firmware_ver, test_results,
-                status, error_reason, batch, cloud_confirmed)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                status, error_reason, batch, cloud_confirmed, recovery_key)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 datetime.datetime.utcnow().isoformat() + "Z",
                 mac, uuid, product_type, firmware_ver,
                 json.dumps(test_results) if test_results else None,
                 status, error_reason, batch,
                 1 if cloud_confirmed else 0,
+                recovery_key or None,
             )
         )
         self._conn.commit()

@@ -58,10 +58,12 @@ class CloudClient:
     async def request_uuid(self, hardware_serial: str, product_type: str,
                            test_results: dict = None, firmware_ver: str = "") -> dict | None:
         """Mint a node UUID. product_type is REQUIRED (cloud QC gate). Returns
-        {uuid, signature, key_id} — signature is the cloud's Ed25519 genuineness
-        sig over the UUID, written to the node over USB and verified by Hubs.
-        Returns None on failure (signature/key_id may be None if cloud signing
-        is not configured; the UUID is still minted)."""
+        {uuid, signature, key_id, recovery_key} — signature is the cloud's Ed25519
+        genuineness sig over the UUID, written to the node over USB and verified by
+        Hubs; recovery_key is the per-node re-claim key (returned ONCE, plaintext) the
+        operator prints on the box (§3.4) — never written to the node, stored encrypted
+        in the cloud. Returns None on failure (signature/key_id may be None if cloud
+        signing is not configured; the UUID is still minted)."""
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.post(f"{self.cloud_url}/provision/request-uuid",
@@ -76,7 +78,8 @@ class CloudClient:
                 d = r.json()
                 return {"uuid": d.get("uuid"),
                         "signature": d.get("signature"),
-                        "key_id": d.get("key_id")}
+                        "key_id": d.get("key_id"),
+                        "recovery_key": d.get("recovery_key")}
             log(f"[Cloud] request-uuid failed: {r.status_code} {r.text}", "WARNING")
             return None
         except Exception as e:
