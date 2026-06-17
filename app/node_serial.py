@@ -53,6 +53,20 @@ def read_identity(port: str) -> dict:
     }
 
 
+def format_sd(port: str) -> dict:
+    """Format the node's SD card to FAT32 via the node serial 'f' command (FatFS
+    f_mkfs). Done right after a fresh flash so the production SD starts clean (the
+    test rig always has the node on USB, so the serial path is fine). Returns
+    {ok, detail}. Destructive — wipes the card; only used in the factory flash flow."""
+    resp = _txn(port, "f", wait=8.0)  # f_mkfs on a large card + re-scan takes a few s
+    if "Format OK" in resp:
+        return {"ok": True, "detail": "FAT32 formatted"}
+    if "SD not mounted" in resp:
+        return {"ok": False, "detail": "SD not mounted — cannot format"}
+    m = re.search(r"Format failed:.*", resp)
+    return {"ok": False, "detail": m.group(0) if m else "no Format-OK ack"}
+
+
 def write_identity(port: str, uuid: str, sig: str, key_id: str) -> dict:
     """Send 'P <uuid> <sig> <key_id>', then read back 'i' to verify the node
     actually stored what we wrote. Returns {ok, uuid, sig, key_id, detail}."""

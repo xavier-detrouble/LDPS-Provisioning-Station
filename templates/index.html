@@ -230,6 +230,7 @@
               </div>
               <div v-if="flashStatus === 'done'" class="text-success">Firmware flashed successfully</div>
               <div v-if="flashStatus === 'error'" class="text-error">[[ flashError ]]</div>
+              <div v-if="formatStatus" class="text-sm text-muted" style="margin-top:6px;">[[ formatStatus ]]</div>
             </div>
 
             <!-- Step 1: Discover Node -->
@@ -476,6 +477,7 @@ Vue.createApp({
       visualLed: null,
       provisionResult: null,
       flashError: '',
+      formatStatus: '',
       playbackResults: null,
       playbackPass: false,
       playbackStatus: '',
@@ -596,10 +598,29 @@ Vue.createApp({
       this.visualOled = null;
       this.visualLed = null;
       this.provisionResult = null;
+      this.formatStatus = '';
     },
     async wizardFlash() {
       await this.flashFirmware();
-      // Flash status tracked via WebSocket; advance when done
+      // Flash status tracked via WebSocket; wizardPostFlash() runs when done
+    },
+    // Post-flash: the node just rebooted out of the flasher; format its SD to
+    // FAT32 so the production card starts clean, then advance. USB-only, factory step.
+    async wizardPostFlash() {
+      this.wizardBusy = true;
+      this.formatStatus = 'Node rebooting — waiting for SD to mount...';
+      // esptool reset → node boots + mounts SD; give it a few seconds.
+      await new Promise(r => setTimeout(r, 4000));
+      this.formatStatus = 'Formatting SD card (FAT32)...';
+      try {
+        const r = await axios.post('/api/flash/format-sd', { port: this.nodePort });
+        this.formatStatus = 'SD formatted: ' + (r.data.detail || 'ok');
+      } catch (e) {
+        // Non-fatal: a blank/just-flashed node sometimes needs SD power-cycle; let
+        // the operator retry from the next step rather than block the whole flow.
+        this.formatStatus = 'SD format skipped: ' + (e.response?.data?.error || e.message);
+      }
+      this.wizardAdvance();
     },
     async wizardDiscover() {
       this.wizardBusy = true;
@@ -729,7 +750,7 @@ Vue.createApp({
         this.flashProgress = data.progress || 0;
         this.flashStatus = data.status || '';
         this.flashError = data.error || '';
-        if (data.status === 'done' && this.wizardIdx === 0) this.wizardAdvance();
+        if (data.status === 'done' && this.wizardIdx === 0) this.wizardPostFlash();
       } else if (topic === 'discovered') {
         this.discoveredNodes = data.nodes || [];
       } else if (topic === 'playback_test') {

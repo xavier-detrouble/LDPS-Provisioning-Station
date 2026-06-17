@@ -1,7 +1,10 @@
 """Firmware flash routes."""
+import asyncio
+
 from fastapi import APIRouter, Request, Body
 from fastapi.responses import JSONResponse
 
+from app import node_serial
 from app.flasher import Flasher
 from app.utils import log
 
@@ -35,6 +38,23 @@ def flash_start(request: Request, data: dict = Body(...)):
 
     log(f"[Route] Flash started on {port}")
     return {"ok": True, "port": port}
+
+
+@router.post("/format-sd")
+async def format_sd(request: Request, data: dict = Body(...)):
+    """Format the freshly-flashed node's SD card to FAT32 (post-flash step).
+    The node is already on USB at the test rig, so we drive its serial 'f'
+    command. Destructive — only run right after a factory flash."""
+    port = data.get("port", "")
+    if not port:
+        return JSONResponse({"error": "port required"}, 400)
+    log(f"[Route] SD format requested on {port}")
+    result = await asyncio.to_thread(node_serial.format_sd, port)
+    if not result.get("ok"):
+        return JSONResponse({"error": result.get("detail", "format failed"),
+                             **result}, 500)
+    log(f"[Route] SD format ok on {port}: {result.get('detail')}")
+    return result
 
 
 @router.post("/generate-manifest")
