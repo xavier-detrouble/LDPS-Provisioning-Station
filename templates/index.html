@@ -339,8 +339,19 @@
             <!-- Step 6: Provision UUID -->
             <div v-if="wizardIdx === 6" style="padding:16px 0;">
               <div class="mb-8 text-muted">Node: [[ selectedMac ]]</div>
+              <!-- Product type = the quota bucket to provision against (F-build operator picker;
+                   no hardcoded value). Options are THIS manufacturer's quota buckets. -->
+              <div class="mb-16" style="max-width:340px;">
+                <label class="text-sm text-muted">Product type (quota bucket)</label>
+                <select class="input" v-model="provisionProductType" style="width:100%;">
+                  <option v-for="q in quotas" :value="q.product_type" :disabled="q.quota - q.used <= 0">
+                    [[ q.product_type ]] — [[ q.quota - q.used ]] left
+                  </option>
+                </select>
+                <div v-if="!quotas.length" class="text-error text-sm mt-8">No quota buckets — log in to Cloud / assign quota first.</div>
+              </div>
               <div class="mb-16">
-                <button class="btn btn-primary" :disabled="wizardBusy" @click="wizardFinalize">
+                <button class="btn btn-primary" :disabled="wizardBusy || !provisionProductType || !quotas.length" @click="wizardFinalize">
                   [[ wizardBusy ? 'Provisioning...' : 'Provision Real UUID' ]]
                 </button>
               </div>
@@ -435,7 +446,7 @@ Vue.createApp({
       // Node flash
       nodePort: '',
       flashRunning: false,
-      provisionProductType: 'LED Node',  // sent to cloud request-uuid (QC gate); no 'default' (operator picker = F-build)
+      provisionProductType: '',  // operator picks a quota bucket (F-build picker); set by loadQuota()
       flashProgress: 0,
       flashStatus: '',
 
@@ -535,6 +546,7 @@ Vue.createApp({
           this.cloudConnected = true;
           this.cloudEmail = r.data.name || 'Manufacturer';
           this.apiKey = '';  // clear from UI
+          this.loadQuota();  // populate the provision product-type picker
         }
       } catch (e) {
         alert('Login failed: ' + (e.response?.data?.error || e.message));
@@ -670,6 +682,13 @@ Vue.createApp({
         const r = await axios.get('/api/cloud/quota');
         this.quotas = r.data.quotas || [];
       } catch (e) { this.quotas = []; }
+      // Default the provision picker to the first bucket with remaining quota, unless the
+      // current selection is still a valid, non-exhausted bucket.
+      const cur = this.quotas.find(q => q.product_type === this.provisionProductType && (q.quota - q.used) > 0);
+      if (!cur) {
+        const avail = this.quotas.find(q => (q.quota - q.used) > 0);
+        this.provisionProductType = avail ? avail.product_type : '';
+      }
     },
     async loadDbStats() {
       try {
