@@ -37,6 +37,12 @@ def flash_start(request: Request, data: dict = Body(...)):
     return {"ok": True, "port": port}
 
 
+@router.post("/generate-manifest")
+def generate_manifest(request: Request):
+    path = Flasher.generate_manifest()
+    return {"ok": True, "path": path}
+
+
 @router.get("/status")
 def flash_status(request: Request):
     s = _s(request)

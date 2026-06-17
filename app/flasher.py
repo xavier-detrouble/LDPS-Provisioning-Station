@@ -1,7 +1,9 @@
 """esptool wrapper — flash Edge-Node firmware in background thread."""
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 import os
 import sys
 import threading
@@ -32,10 +34,43 @@ class Flasher:
                 self.error = f"Missing: {os.path.basename(f)}"
                 return False
 
+        # SHA256 verification against manifest (if present)
+        manifest = os.path.join(firmware_dir, "firmware_manifest.json")
+        if os.path.exists(manifest):
+            if not self._verify_sha256(manifest, firmware_dir):
+                return False
+
         self._thread = threading.Thread(
             target=self._run, args=(port, bootloader, partitions, firmware), daemon=True
         )
         self._thread.start()
+        return True
+
+    def _verify_sha256(self, manifest_path: str, firmware_dir: str) -> bool:
+        """Verify firmware files against SHA256 hashes in manifest."""
+        try:
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+        except Exception as e:
+            self.error = f"Manifest read error: {e}"
+            return False
+
+        for entry in manifest.get("files", []):
+            name = entry.get("name", "")
+            expected_hash = entry.get("sha256", "")
+            if not name or not expected_hash:
+                continue
+            path = os.path.join(firmware_dir, name)
+            if not os.path.exists(path):
+                self.error = f"Manifest references missing file: {name}"
+                return False
+            actual_hash = _sha256_file(path)
+            if actual_hash != expected_hash:
+                self.error = f"SHA256 mismatch for {name}"
+                log(f"[Flash] SHA256 mismatch: {name} expected={expected_hash[:12]}... got={actual_hash[:12]}...", "ERROR")
+                return False
+
+        log("[Flash] SHA256 verification passed")
         return True
 
     def _run(self, port: str, bootloader: str, partitions: str, firmware: str):
@@ -99,5 +134,36 @@ class Flasher:
         for name in ["bootloader.bin", "partitions.bin", "firmware.bin"]:
             path = os.path.join(firmware_dir, name)
             if os.path.exists(path):
-                files.append({"name": name, "size": os.path.getsize(path)})
+                files.append({
+                    "name": name,
+                    "size": os.path.getsize(path),
+                    "sha256": _sha256_file(path),
+                })
         return files
+
+    @staticmethod
+    def generate_manifest(firmware_dir: str = FIRMWARE_DIR) -> str:
+        """Generate firmware_manifest.json from current firmware files."""
+        files = []
+        for name in ["bootloader.bin", "partitions.bin", "firmware.bin"]:
+            path = os.path.join(firmware_dir, name)
+            if os.path.exists(path):
+                files.append({
+                    "name": name,
+                    "size": os.path.getsize(path),
+                    "sha256": _sha256_file(path),
+                })
+        manifest = {"version": "1.0", "files": files}
+        manifest_path = os.path.join(firmware_dir, "firmware_manifest.json")
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, indent=2)
+        log(f"[Flash] Manifest generated: {len(files)} files")
+        return manifest_path
+
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return h.hexdigest()

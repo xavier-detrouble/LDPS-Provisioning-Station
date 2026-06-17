@@ -39,6 +39,13 @@ def connect_dongle(request: Request, data: dict = Body(...)):
     from app import _setup_espnow_handler
     _setup_espnow_handler(s, espnow)
 
+    # Wire TB: (test board) response handler for CAPTURE_RESULT
+    def _on_tb_msg(msg_type: str, payload: str):
+        if payload.startswith("CAPTURE_RESULT,"):
+            from app.routes.provision import handle_capture_result
+            handle_capture_result(payload[len("CAPTURE_RESULT,"):])
+    dongle.register_handler("tb", _on_tb_msg)
+
     # Start receiver worker if not running
     if not hasattr(s, '_rx_thread') or s._rx_thread is None or not s._rx_thread.is_alive():
         import threading

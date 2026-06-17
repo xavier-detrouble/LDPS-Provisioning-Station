@@ -1,4 +1,4 @@
-"""Cloud login and quota routes."""
+"""Cloud login and quota routes — manufacturer API key auth."""
 from fastapi import APIRouter, Request, Body
 from fastapi.responses import JSONResponse
 
@@ -14,26 +14,30 @@ def _s(r: Request):
 
 @router.post("/login")
 async def cloud_login(request: Request, data: dict = Body(...)):
+    """Login with manufacturer API key (not email/password)."""
     s = _s(request)
-    email = data.get("email", "")
-    password = data.get("password", "")
+    api_key = data.get("api_key", "")
     cloud_url = data.get("cloud_url", DEFAULT_CLOUD_URL)
 
-    if not email or not password:
-        return JSONResponse({"error": "email and password required"}, 400)
+    if not api_key:
+        return JSONResponse({"error": "api_key required"}, 400)
 
     from app.cloud_client import CloudClient
     client = CloudClient(cloud_url)
-    result = await client.login(email, password)
+    result = await client.login(api_key)
 
     if result.get("ok"):
         s.cloud_client = client
         s.cloud_url = cloud_url
-        s.cloud_token = client.token
-        s.cloud_email = email
+        s.cloud_token = api_key  # stored for status display
+        s.cloud_email = result.get("name", "Manufacturer")
         if s.ws:
-            s.ws.broadcast("cloud", {"connected": True, "email": email})
-        log(f"[Cloud] Logged in as {email}")
+            s.ws.broadcast("cloud", {
+                "connected": True,
+                "name": result.get("name", ""),
+                "manufacturer_id": result.get("manufacturer_id", ""),
+            })
+        log(f"[Cloud] Manufacturer logged in: {result.get('name')}")
         return result
     return JSONResponse(result, 401)
 
@@ -45,16 +49,17 @@ def cloud_logout(request: Request):
     s.cloud_email = ""
     s.cloud_client = None
     if s.ws:
-        s.ws.broadcast("cloud", {"connected": False, "email": ""})
+        s.ws.broadcast("cloud", {"connected": False, "name": ""})
     return {"ok": True}
 
 
 @router.get("/status")
 def cloud_status(request: Request):
     s = _s(request)
+    connected = bool(s.cloud_client and s.cloud_client.api_key)
     return {
-        "connected": bool(s.cloud_token),
-        "email": s.cloud_email,
+        "connected": connected,
+        "name": s.cloud_client.manufacturer_name if connected else "",
         "cloud_url": s.cloud_url or DEFAULT_CLOUD_URL,
     }
 
@@ -62,7 +67,7 @@ def cloud_status(request: Request):
 @router.get("/quota")
 async def cloud_quota(request: Request):
     s = _s(request)
-    if not hasattr(s, 'cloud_client') or not s.cloud_client:
+    if not s.cloud_client or not s.cloud_client.api_key:
         return JSONResponse({"error": "Not logged in"}, 401)
     quotas = await s.cloud_client.get_quota()
     return {"quotas": quotas}
