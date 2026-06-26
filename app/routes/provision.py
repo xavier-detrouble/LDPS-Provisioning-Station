@@ -187,6 +187,48 @@ async def finalize(request: Request, mac: str, data: dict = Body(...)):
             "recovery_key": recovery_key, "cloud_confirmed": confirmed}
 
 
+# ── QC fail recording (ST3 / DR-13) — the yield gate ─────────
+# report_test_fail() was dead code, so a unit that failed HW_TEST / playback / the
+# USB write was never counted (stats_failed never moved → yield always 100%). The
+# operator records a failed unit here: cloud test-fail (NO quota burn) + stats_failed++
+# + a 'failed' provision_log row. Explicit (operator's final verdict) so retrying a
+# flaky test doesn't double-count; the GUI offers "Set aside as failed" on any fail.
+
+async def _record_fail(s, mac: str, reason: str, test_results: dict = None,
+                       product_type: str = "", firmware_ver: str = "") -> None:
+    if getattr(s, "cloud_client", None):
+        try:
+            await s.cloud_client.report_test_fail(mac, test_results, reason)
+        except Exception as e:
+            log(f"[Provision] report_test_fail error: {e}", "WARNING")
+    from app.provision_log import ProvisionLog
+    if not getattr(s, "provision_log", None):
+        s.provision_log = ProvisionLog()
+    try:
+        s.provision_log.add(mac=mac, uuid=None, product_type=product_type or "?",
+                            firmware_ver=firmware_ver or "?", test_results=test_results,
+                            status="failed", error_reason=reason)
+    except Exception as e:
+        log(f"[Provision] provision_log(failed) error: {e}", "WARNING")
+    s.stats_failed += 1
+    if s.ws:
+        s.ws.broadcast("stats", {"provisioned": s.stats_provisioned, "failed": s.stats_failed})
+    log(f"[Provision] FAIL recorded: {mac} — {reason}")
+
+
+@router.post("/report-fail/{mac}")
+async def report_fail(request: Request, mac: str, data: dict = Body(default={})):
+    """Operator sets a unit aside as QC-failed (after a failed HW test / playback /
+    write). Records to the cloud (no quota burn) + the local yield."""
+    s = _s(request)
+    await _record_fail(s, mac,
+                       reason=data.get("reason", "QC failed"),
+                       test_results=data.get("test_results"),
+                       product_type=data.get("product_type", ""),
+                       firmware_ver=data.get("firmware_ver", ""))
+    return {"ok": True, "failed": s.stats_failed}
+
+
 # ── Playback Test (LDPS-Probe) ───────────────────────
 
 # Pending capture result tracker

@@ -137,6 +137,7 @@ def create_app() -> FastAPI:
     from app.routes import cloud as cloud_routes
     from app.routes import flash as flash_routes
     from app.routes import provision as provision_routes
+    from app.routes import provision_hub as provision_hub_routes
     from app.routes import history as history_routes
     from app.routes import ws as ws_routes
 
@@ -145,6 +146,7 @@ def create_app() -> FastAPI:
     app.include_router(cloud_routes.router, prefix="/api/cloud")
     app.include_router(flash_routes.router, prefix="/api/flash")
     app.include_router(provision_routes.router, prefix="/api/provision")
+    app.include_router(provision_hub_routes.router, prefix="/api/hub")
     app.include_router(history_routes.router, prefix="/api/history")
     app.include_router(ws_routes.router)
 

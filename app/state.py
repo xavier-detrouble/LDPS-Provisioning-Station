@@ -23,6 +23,7 @@ class AppState:
         self.wizard_step = "idle"
         self.wizard_mac = ""
         self.wizard_uuid = ""
+        self.hub_pending = None   # signed hub binding awaiting SD write + confirm (flow B)
 
         # Flash
         self.flash_running = False
