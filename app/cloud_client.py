@@ -110,3 +110,71 @@ class CloudClient:
             return r.status_code == 200
         except Exception:
             return False
+
+    # ── Hub provisioning (flow B, §5/§6.1) — the Station reads the assembled OPi's
+    #    RK3566 cpuid and the cloud signs the (hub_uuid:cpuid) binding to THAT chip.
+    #    The binding_signature + signing_keys are written to the Hub's SD via the Hub
+    #    provisioning channel (the "发去hub" step, later); the cloud keeps only key_id.
+
+    async def provision_hub(self, cpuid: str, product_type: str,
+                            test_results: dict = None, firmware_ver: str = "",
+                            provision_batch: str = "") -> dict:
+        """Reserve + sign a hub binding. Returns the cloud response dict:
+        success → {ok: True, hub_uuid, cpuid, binding_signature, key_id, signing_keys};
+        failure → {ok: False, error, code?}  (codes: UNKNOWN_PRODUCT_TYPE,
+        QUOTA_EXHAUSTED, QUOTA_NOT_FOUND, CPUID_EXISTS). product_type must be an
+        active device_type='hub' catalog entry."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(f"{self.cloud_url}/provision/hub",
+                                      json={
+                                          "cpuid": cpuid,
+                                          "product_type": product_type,
+                                          "test_results": test_results,
+                                          "firmware_ver": firmware_ver or None,
+                                          "provision_batch": provision_batch or None,
+                                      },
+                                      headers=self._headers())
+            try:
+                d = r.json()
+            except Exception:
+                d = {}
+            if r.status_code == 200 and d.get("ok"):
+                return d
+            log(f"[Cloud] provision-hub failed: {r.status_code} {d}", "WARNING")
+            return {"ok": False, "error": d.get("error", f"HTTP {r.status_code}"),
+                    "code": d.get("code")}
+        except Exception as e:
+            log(f"[Cloud] provision-hub error: {e}", "ERROR")
+            return {"ok": False, "error": str(e)}
+
+    async def confirm_hub(self, hub_uuid: str, success: bool = True) -> bool:
+        """COMMIT (SD binding written) or RELEASE (write failed → frees the quota)."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(f"{self.cloud_url}/provision/hub/confirm",
+                                      json={"hub_uuid": hub_uuid, "success": success},
+                                      headers=self._headers())
+            return r.status_code == 200
+        except Exception:
+            return False
+
+    async def rebind_hub(self, hub_uuid: str, cpuid: str) -> dict:
+        """RMA board swap: re-sign (hub_uuid:new_cpuid), same hub_uuid + owner.
+        Returns {ok, hub_uuid, cpuid, binding_signature, key_id, signing_keys} or
+        {ok: False, error}."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(f"{self.cloud_url}/provision/hub/rebind",
+                                      json={"hub_uuid": hub_uuid, "cpuid": cpuid},
+                                      headers=self._headers())
+            try:
+                d = r.json()
+            except Exception:
+                d = {}
+            if r.status_code == 200 and d.get("ok"):
+                return d
+            log(f"[Cloud] rebind-hub failed: {r.status_code} {d}", "WARNING")
+            return {"ok": False, "error": d.get("error", f"HTTP {r.status_code}")}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
