@@ -60,6 +60,8 @@ CLOUD_URL=http://localhost:3737 PORT=9000 python3 main.py
 
 ## Authority docs
 
+- [`../docs/provisioning/README.md`](../docs/provisioning/README.md) — **cross-repo MAP** (which repo
+  implements which part of the provisioning design; read first).
 - `LDPS-Hardware/docs/provisioning/PROVISION_IDENTITY_OWNERSHIP_DESIGN.md` — single authority
   (node identity/ownership/QC; §9 = build log).
 - `LDPS-Hardware/docs/provisioning/HUB_IDENTITY_DESIGN.md` — hub flow B (§5), factory-access
