@@ -8,6 +8,9 @@ API key** (never Supabase/Studio auth). Separate git repo
 > Language: English-primary; supplementary Mandarin (Traditional) in marked bullets only, never
 > Cantonese, never mid-paragraph.
 
+> **Keep this lean — agent entry only** (target <200 lines): must-see hard rules + build/run +
+> pointers to `docs/`. Detail goes in `docs/`, not here.
+
 ## Roles per device type (one app, many roles — different job per device)
 
 | Device | What the Station does | Transport |
