@@ -247,8 +247,17 @@
 
             <!-- Step 1: Discover Node -->
             <div v-if="wizardIdx === 1" style="padding:16px 0;">
-              <button class="btn btn-primary mb-16" :disabled="wizardBusy" @click="wizardDiscover">
-                [[ wizardBusy ? 'Scanning...' : 'Discover Nodes' ]]
+              <!-- USB identify (authoritative; no RF/channel dependency) -->
+              <div class="row mb-8" style="gap:8px;align-items:center;">
+                <select class="input" v-model="nodePort" style="flex:1">
+                  <option value="">Node USB port...</option>
+                  <option v-for="p in serialPorts" :value="p.device">[[ p.device ]]</option>
+                </select>
+                <button class="btn btn-primary" :disabled="!nodePort || wizardBusy" @click="wizardReadUsb">Read over USB</button>
+              </div>
+              <div class="text-muted text-sm mb-8" style="text-align:center;">— or scan over RF —</div>
+              <button class="btn btn-outline mb-16" :disabled="wizardBusy" @click="wizardDiscover">
+                [[ wizardBusy ? 'Scanning...' : 'Discover Nodes (RF)' ]]
               </button>
               <div v-if="discoveredNodes.length">
                 <table class="table">
@@ -379,7 +388,14 @@
                     <div style="font-size:22px;font-weight:700;letter-spacing:2px;font-family:monospace;">[[ provisionResult.recovery_key ]]</div>
                   </div>
                 </div>
-                <div v-else class="text-error">[[ provisionResult.error ]]</div>
+                <div v-else class="text-error">
+                  [[ provisionResult.error ]]
+                  <div v-if="provisionResult.code === 'ALREADY_PROVISIONED'" style="margin-top:10px;">
+                    <button class="btn btn-outline" :disabled="wizardBusy" @click="wizardClear">
+                      [[ wizardBusy ? 'Clearing…' : 'Clear identity & re-provision' ]]
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -778,6 +794,38 @@ Vue.createApp({
       }
       this.wizardBusy = false;
     },
+    // Identify the node over USB (authoritative — USB is the link we write to, and it
+    // doesn't depend on the RF/ESP-NOW channel like Discover does). Sets selectedMac to
+    // the node's REAL MAC so the finalize MAC-guard passes by construction.
+    async wizardReadUsb() {
+      if (!this.nodePort) { this.provisionResult = { ok:false, error:'Select the Node USB port first.' }; return; }
+      this.wizardBusy = true;
+      try {
+        const r = await axios.post('/api/provision/read-node', { port: this.nodePort });
+        const n = { mac: r.data.mac, fw: r.data.fw, uuid: r.data.uuid, _usb: true };
+        this.discoveredNodes = [n, ...this.discoveredNodes.filter(x => x.mac !== n.mac)];
+        this.selectedMac = n.mac;
+        this.provisionResult = null;
+      } catch (e) {
+        this.provisionResult = { ok:false, error: e.response?.data?.error || e.message };
+      }
+      this.wizardBusy = false;
+    },
+    // Re-provision without a reflash: 'U' over USB clears the (write-once) identity, then
+    // retry the mint+write. Used when finalize reports ALREADY_PROVISIONED.
+    async wizardClear() {
+      if (!this.nodePort) return;
+      this.wizardBusy = true;
+      try {
+        await axios.post('/api/provision/clear', { port: this.nodePort });
+        this.provisionResult = null;
+      } catch (e) {
+        this.provisionResult = { ok:false, error: e.response?.data?.error || e.message };
+        this.wizardBusy = false; return;
+      }
+      this.wizardBusy = false;
+      await this.wizardFinalize();   // node is blank now → re-attempt
+    },
     async wizardFinalize() {
       this.wizardBusy = true;
       this.provisionResult = null;
@@ -792,7 +840,7 @@ Vue.createApp({
           this.wizardAdvance();
         }
       } catch (e) {
-        this.provisionResult = { ok: false, error: e.response?.data?.error || e.message };
+        this.provisionResult = { ok: false, error: e.response?.data?.error || e.message, code: e.response?.data?.code };
       }
       this.wizardBusy = false;
     },

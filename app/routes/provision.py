@@ -119,7 +119,7 @@ async def finalize(request: Request, mac: str, data: dict = Body(...)):
     carries the USB `port`, `product_type` (required QC gate), `test_results`,
     `firmware_ver`."""
     import asyncio
-    from app.node_serial import write_identity
+    from app.node_serial import write_identity, read_identity
 
     s = _s(request)
     if not getattr(s, "cloud_client", None):
@@ -134,8 +134,28 @@ async def finalize(request: Request, mac: str, data: dict = Body(...)):
     if not product_type:
         return JSONResponse({"error": "product_type required (QC gate)"}, 400)
 
+    # P1 GUARD — USB is the AUTHORITATIVE identity channel: it is the link we actually
+    # write to, whereas the RF-discovered `mac` is a separate node that merely answered
+    # over the air. Read the node on `port` over USB FIRST and verify it is the selected
+    # node AND blank, BEFORE minting/writing — else a UUID minted for MAC-A could be
+    # written into node-B on the wrong port (cloud serial ≠ the node's real MAC).
+    ident = await asyncio.to_thread(read_identity, port)
+    usb_mac = (ident.get("mac") or "").upper()
+    if not usb_mac:
+        return JSONResponse({"error": f"No node responding on {port} — check the USB cable/port."}, 409)
+    if mac and usb_mac != mac.upper():
+        return JSONResponse({"error": f"Wrong node on {port}: USB MAC {usb_mac} ≠ selected {mac.upper()}. "
+                                      f"Select the USB port of the node you discovered.", "code": "MAC_MISMATCH"}, 409)
+    if ident.get("uuid"):
+        return JSONResponse({"error": f"Node already provisioned (UUID {ident['uuid']}). "
+                                      f"Clear its identity (Re-provision) before writing a new one.",
+                             "code": "ALREADY_PROVISIONED"}, 409)
+    # The serial registered in the cloud is the USB-verified MAC (authoritative). It now
+    # equals `mac`, but using usb_mac makes the source-of-truth explicit.
+    hw_serial = usb_mac
+
     # Step 1: mint UUID + genuineness signature from Cloud.
-    minted = await s.cloud_client.request_uuid(mac, product_type, test_results, firmware_ver)
+    minted = await s.cloud_client.request_uuid(hw_serial, product_type, test_results, firmware_ver)
     if not minted or not minted.get("uuid"):
         return JSONResponse({"error": "Failed to get UUID from Cloud"}, 502)
     uuid = minted["uuid"]
@@ -342,3 +362,46 @@ def _crc16_ccitt(data: bytes) -> int:
             crc = ((crc << 1) ^ 0x1021) if (crc & 0x8000) else (crc << 1)
             crc &= 0xFFFF
     return crc or 1
+
+
+# ── USB-authoritative node ops (P1/P2/P3 fixes) ──────────────────────────────
+
+@router.post("/read-node")
+async def read_node(request: Request, data: dict = Body(...)):
+    """Identify the node over USB (read 'i'). USB is in-hand and authoritative, so this
+    lets the wizard pick a node by its REAL MAC + see its current identity WITHOUT relying
+    on RF discover (which can return a different node, or miss it when the node's ESP-NOW
+    channel ≠ the dongle's). Body: {port}."""
+    import asyncio
+    from app.node_serial import read_identity
+    port = (data or {}).get("port")
+    if not port:
+        return JSONResponse({"error": "port required"}, 400)
+    try:
+        ident = await asyncio.to_thread(read_identity, port)
+    except Exception as e:
+        return JSONResponse({"error": f"USB read error on {port}: {e}"}, 500)
+    if not ident.get("mac"):
+        return JSONResponse({"error": f"No node responding on {port} — check the cable/port."}, 409)
+    return {"ok": True, "mac": ident["mac"].upper(), "uuid": ident.get("uuid") or "",
+            "fw": ident.get("fw") or "", "key_id": ident.get("key_id") or "",
+            "provisioned": bool(ident.get("uuid"))}
+
+
+@router.post("/clear")
+async def clear_node(request: Request, data: dict = Body(...)):
+    """Un-provision the node over USB ('U') so it can be RE-provisioned WITHOUT a reflash
+    (identity is write-once; re-mint needs a blank node). Clears uuid + genuineness + owner
+    from NVS only — the SD (packs/logs) is untouched. Body: {port}."""
+    import asyncio
+    from app.node_serial import clear_identity
+    port = (data or {}).get("port")
+    if not port:
+        return JSONResponse({"error": "port required"}, 400)
+    try:
+        r = await asyncio.to_thread(clear_identity, port)
+    except Exception as e:
+        return JSONResponse({"error": f"USB clear error on {port}: {e}"}, 500)
+    if not r.get("ok"):
+        return JSONResponse({"error": r.get("detail", "clear failed")}, 500)
+    return {"ok": True, "detail": r["detail"]}

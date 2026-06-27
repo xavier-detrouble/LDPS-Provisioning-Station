@@ -67,6 +67,17 @@ def format_sd(port: str) -> dict:
     return {"ok": False, "detail": m.group(0) if m else "no Format-OK ack"}
 
 
+def clear_identity(port: str) -> dict:
+    """Send 'U' to un-provision the node — clears uuid + genuineness sig + key_id +
+    owner from NVS (NOT the SD). Node identity is write-once, so RE-provisioning a node
+    that already has a UUID requires clearing it first. Returns {ok, detail}. Used by
+    the RMA / re-provision path so the operator doesn't have to reflash just to re-mint."""
+    resp = _txn(port, "U", wait=2.0)
+    if "identity cleared" in resp:
+        return {"ok": True, "detail": "identity cleared -> AWAIT_UUID"}
+    return {"ok": False, "detail": "no clear ack: " + resp[-160:].strip()}
+
+
 def write_identity(port: str, uuid: str, sig: str, key_id: str) -> dict:
     """Send 'P <uuid> <sig> <key_id>', then read back 'i' to verify the node
     actually stored what we wrote. Returns {ok, uuid, sig, key_id, detail}."""
