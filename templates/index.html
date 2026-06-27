@@ -233,6 +233,7 @@
                   <option value="">Select Node USB port...</option>
                   <option v-for="p in serialPorts" :value="p.device">[[ p.device ]]</option>
                 </select>
+                <button class="btn btn-outline" :disabled="wizardBusy || flashRunning" @click="wizardDetect" title="Auto-detect the node USB port">[[ wizardBusy ? 'Detecting…' : '🔍 Detect' ]]</button>
                 <button class="btn btn-primary" :disabled="!nodePort || flashRunning" @click="wizardFlash">Flash</button>
                 <button class="btn btn-outline" @click="wizardSkip">Skip</button>
               </div>
@@ -247,13 +248,16 @@
 
             <!-- Step 1: Discover Node -->
             <div v-if="wizardIdx === 1" style="padding:16px 0;">
-              <!-- USB identify (authoritative; no RF/channel dependency) -->
+              <!-- Auto-detect over USB (recommended; no guessing the port, no RF dependency) -->
+              <button class="btn btn-primary mb-8" style="width:100%;" :disabled="wizardBusy" @click="wizardDetect">
+                [[ wizardBusy ? 'Detecting…' : '🔍 Detect node (USB)' ]]
+              </button>
               <div class="row mb-8" style="gap:8px;align-items:center;">
                 <select class="input" v-model="nodePort" style="flex:1">
-                  <option value="">Node USB port...</option>
+                  <option value="">…or pick the USB port manually</option>
                   <option v-for="p in serialPorts" :value="p.device">[[ p.device ]]</option>
                 </select>
-                <button class="btn btn-primary" :disabled="!nodePort || wizardBusy" @click="wizardReadUsb">Read over USB</button>
+                <button class="btn btn-outline" :disabled="!nodePort || wizardBusy" @click="wizardReadUsb">Read</button>
               </div>
               <div class="text-muted text-sm mb-8" style="text-align:center;">— or scan over RF —</div>
               <button class="btn btn-outline mb-16" :disabled="wizardBusy" @click="wizardDiscover">
@@ -791,6 +795,29 @@ Vue.createApp({
         setTimeout(() => { this.syncStatus = 'Sync assumed complete (check Node display)'; this.syncDone = true; }, 15000);
       } catch (e) {
         this.syncStatus = 'Sync failed: ' + (e.response?.data?.error || e.message);
+      }
+      this.wizardBusy = false;
+    },
+    // Auto-detect the node's USB port (probes each serial port; the Edge-Node answers
+    // 'i' with a MAC, the dongle doesn't). Saves the operator guessing /dev/cu.* names.
+    async wizardDetect() {
+      this.wizardBusy = true;
+      this.provisionResult = null;
+      try {
+        const r = await axios.post('/api/provision/detect-node');
+        const nodes = r.data.nodes || [];
+        if (nodes.length === 1) {
+          this.nodePort = nodes[0].port;
+          this.selectedMac = nodes[0].mac;
+          this.discoveredNodes = [{ mac: nodes[0].mac, fw: nodes[0].fw, uuid: nodes[0].uuid, _usb: true }];
+        } else if (nodes.length === 0) {
+          this.provisionResult = { ok:false, error:'No node detected on USB — check the cable/connection.' };
+        } else {
+          this.discoveredNodes = nodes.map(n => ({ mac:n.mac, fw:n.fw, uuid:n.uuid, _usb:true }));
+          this.provisionResult = { ok:false, error: nodes.length + ' nodes on USB — select the port manually.' };
+        }
+      } catch (e) {
+        this.provisionResult = { ok:false, error: e.response?.data?.error || e.message };
       }
       this.wizardBusy = false;
     },

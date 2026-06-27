@@ -405,3 +405,31 @@ async def clear_node(request: Request, data: dict = Body(...)):
     if not r.get("ok"):
         return JSONResponse({"error": r.get("detail", "clear failed")}, 500)
     return {"ok": True, "detail": r["detail"]}
+
+
+@router.post("/detect-node")
+async def detect_node(request: Request):
+    """Auto-detect the Node's USB port so the operator doesn't have to guess which
+    /dev/cu.* is which. Probes each candidate serial port with 'i': an Edge-Node answers
+    with a 'MAC=' line, whereas the dongle just streams sx:/en: (no MAC=). Skips the port
+    of an already-connected dongle (probing resets the ESP32-S3 → would drop its RF link).
+    Returns {ok, nodes:[{port, mac, uuid, fw, provisioned}]}."""
+    import asyncio
+    from app.node_serial import read_identity
+    from app.utils import list_serial_ports
+    s = _s(request)
+    dongle_port = getattr(getattr(s, "dongle", None), "port", None) if getattr(getattr(s, "dongle", None), "connected", False) else None
+    cand = [p["device"] for p in list_serial_ports()
+            if any(k in p["device"] for k in ("usbmodem", "ttyACM", "ttyUSB", "wchusbserial", "SLAB"))
+            and p["device"] != dongle_port]
+    found = []
+    for port in cand:
+        try:
+            ident = await asyncio.to_thread(read_identity, port)
+        except Exception:
+            continue
+        if ident.get("mac"):
+            found.append({"port": port, "mac": ident["mac"].upper(),
+                          "uuid": ident.get("uuid") or "", "fw": ident.get("fw") or "",
+                          "provisioned": bool(ident.get("uuid"))})
+    return {"ok": True, "nodes": found, "probed": cand}
