@@ -5,10 +5,10 @@ QC-tests devices on the assembly line, talking to the Cloud with a **manufacture
 API key** (never Supabase/Studio auth). Separate git repo
 (`xavier-detrouble/LDPS-Provisioning-Station`); direct-push to `main` with records.
 
-> Language: English-primary; supplementary Mandarin (繁體) in marked bullets only, never
+> Language: English-primary; supplementary Mandarin (Traditional) in marked bullets only, never
 > Cantonese, never mid-paragraph.
 
-## Roles per device type (一app多用 — different job per device)
+## Roles per device type (one app, many roles — different job per device)
 
 | Device | What the Station does | Transport |
 |---|---|---|
