@@ -8,9 +8,11 @@ supplies the cpuid and the signed binding is returned for that later write. The 
 calls here are real (verified against the running cloud)."""
 from __future__ import annotations
 
+import httpx
 from fastapi import APIRouter, Request, Body
 from fastapi.responses import JSONResponse
 
+from app.config import HUB_HOST
 from app.utils import log
 
 router = APIRouter()
@@ -104,3 +106,68 @@ async def hub_rebind(request: Request, data: dict = Body(...)):
     log(f"[HubProvision] REBIND hub_uuid={hub_uuid} → new cpuid={cpuid[:12]}…")
     return {"ok": True, **{k: res.get(k) for k in
                            ("hub_uuid", "cpuid", "binding_signature", "key_id", "signing_keys")}}
+
+
+# ── §6.1 provisioning channel (Station → assembled OPi) ─────────────────────────
+# Step-3 transport. The Station reaches the OPi's open channel (FRESH/locked only) to
+# READ its cpuid and WRITE the cloud-signed binding. LAN HTTP now (set HUB_HOST);
+# USB-gadget/eth link-local later — same routes, transport-agnostic. The hub verifies
+# the binding against its OWN cpuid before writing, so the open channel can never
+# impersonate, only self-lock. Authority: HUB_IDENTITY_DESIGN §6.1.
+
+@router.get("/host")
+async def hub_host_info():
+    """The §6.1 channel target the Station will read/write (shown in the GUI)."""
+    return {"hub_host": HUB_HOST}
+
+
+@router.get("/read-cpuid")
+async def hub_read_cpuid():
+    """Read the assembled OPi's cpuid over the §6.1 channel (auto-fills the GUI field)."""
+    url = f"{HUB_HOST}/api/provision/cpuid"
+    try:
+        async with httpx.AsyncClient(timeout=8) as c:
+            r = await c.get(url)
+    except Exception as e:
+        return JSONResponse({"error": f"cannot reach hub at {HUB_HOST} — check it is powered "
+                                      f"+ on the provisioning link ({e})"}, 502)
+    if r.status_code == 404:
+        return JSONResponse({"error": "hub channel closed — it is already provisioned "
+                                      "(RMA-clear it to re-provision)"}, 409)
+    if r.status_code != 200:
+        return JSONResponse({"error": f"hub returned HTTP {r.status_code}", "body": r.text[:200]}, 502)
+    cpuid = (r.json() or {}).get("cpuid", "")
+    log(f"[HubChannel] read cpuid={cpuid[:12]}… from {HUB_HOST}")
+    return {"ok": True, "cpuid": cpuid, "hub_host": HUB_HOST}
+
+
+@router.post("/write-identity")
+async def hub_write_identity(data: dict = Body(...)):
+    """Write the cloud-signed binding onto the OPi's SD over the §6.1 channel.
+
+    body: {hub_uuid, cpuid, binding_signature, key_id, signing_keys} (the /provision result).
+    The hub re-verifies against its own cpuid before persisting; on success it unlocks in
+    place and reports provisioned=true (operator then restarts it + /confirm to commit quota).
+    """
+    payload = {k: data.get(k) for k in
+               ("hub_uuid", "cpuid", "binding_signature", "key_id", "signing_keys")}
+    if not (payload["hub_uuid"] and payload["cpuid"] and payload["binding_signature"] and payload["key_id"]):
+        return JSONResponse({"error": "hub_uuid, cpuid, binding_signature, key_id required "
+                                      "(provision/sign the hub first)"}, 400)
+    url = f"{HUB_HOST}/api/provision/identity"
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(url, json=payload)
+    except Exception as e:
+        return JSONResponse({"error": f"cannot reach hub at {HUB_HOST} ({e})"}, 502)
+    try:
+        body = r.json()
+    except Exception:
+        body = {"body": r.text[:200]}
+    if r.status_code != 200:
+        # Surface the hub's own reason (cpuid mismatch / bad sig / closed) verbatim.
+        status = r.status_code if r.status_code in (400, 404, 409) else 502
+        log(f"[HubChannel] write REJECTED by hub ({r.status_code}): {body.get('error')}")
+        return JSONResponse({"error": "hub rejected the write", "hub_status": r.status_code, **body}, status)
+    log(f"[HubChannel] wrote identity to {HUB_HOST}: hub_uuid={payload['hub_uuid']} → {body.get('provisioned')}")
+    return {"ok": True, "hub_host": HUB_HOST, **body}

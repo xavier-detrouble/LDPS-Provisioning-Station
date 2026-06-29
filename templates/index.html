@@ -426,18 +426,22 @@
       <div class="card" style="max-width:580px;">
         <div class="card-title">Provision Hub (Orange Pi)</div>
         <div class="text-muted text-sm mb-16">
-          Flow B: the Cloud signs a binding to this OPi's chip (cpuid). The signed identity is then
-          written to the hub's SD via the §6.1 provisioning channel — that transport is the real-HW
-          step (step 3); for now read/enter the cpuid manually.
+          Flow B: the Cloud signs a binding to this OPi's chip (cpuid); the Station then writes the
+          signed identity to the hub's SD over the §6.1 provisioning channel
+          (<code>[[ hubHost || 'hub' ]]</code>). Read the cpuid from the hub or type it.
         </div>
         <div v-if="!cloudConnected" class="text-error text-sm mb-16">Log in to Cloud (Setup tab) first.</div>
 
         <template v-if="!hubDone">
-          <!-- 1. cpuid -->
+          <!-- 1. cpuid (read over the §6.1 channel, or type it) -->
           <div class="mb-16">
             <label class="text-sm text-muted">Hub cpuid (RK3566 chip id)</label>
-            <input class="input" v-model="hubCpuid" placeholder="read from the assembled OPi"
-                   style="width:100%;font-family:monospace;" :disabled="!!hubResult" />
+            <div class="row" style="gap:8px;align-items:stretch;">
+              <input class="input" v-model="hubCpuid" placeholder="read from the assembled OPi"
+                     style="flex:1;font-family:monospace;" :disabled="!!hubResult" />
+              <button class="btn btn-outline" :disabled="hubBusy || !!hubResult" @click="hubReadCpuid">
+                [[ hubBusy ? '…' : 'Read from hub' ]]</button>
+            </div>
           </div>
           <!-- 2. ST2: hub product_type picker (HUB quota buckets only) -->
           <div class="mb-16" style="max-width:360px;">
@@ -463,12 +467,21 @@
             <div class="text-sm" style="font-family:monospace;margin:8px 0;word-break:break-all;">
               hub_uuid: [[ hubResult.hub_uuid ]]<br>key_id: [[ hubResult.key_id ]] · sig: [[ (hubResult.binding_signature||'').slice(0,32) ]]…
             </div>
-            <div class="text-muted text-sm mb-16" style="padding:8px;border:1px dashed var(--border);border-radius:6px;">
-              ⏳ Step 3 (real HW): write <code>hub_boot_identity.json</code> + <code>signing_keys.json</code> to the
-              hub SD via the §6.1 channel, then run Hub QC. Confirm once written + QC-passed.
+            <!-- Step 3: write the binding to the OPi over the §6.1 channel -->
+            <div class="mb-16" style="padding:10px;border:1px dashed var(--border);border-radius:6px;">
+              <div class="text-muted text-sm" style="margin-bottom:8px;">
+                Step 3: write <code>hub_boot_identity.json</code> to the hub SD over the §6.1 channel
+                (<code>[[ hubHost || 'hub' ]]</code>). The hub re-verifies the binding against its own
+                chip before writing, then unlocks.
+              </div>
+              <button v-if="!hubWritten" class="btn btn-primary" :disabled="hubBusy" @click="hubWriteToHub">
+                [[ hubBusy ? 'Writing…' : 'Write to Hub (§6.1)' ]]</button>
+              <div v-else class="text-success text-sm" style="font-weight:600;">
+                ✓ Written — hub unlocked. Restart the hub so it registers + heartbeats on the cloud, then Confirm.
+              </div>
             </div>
             <div class="row">
-              <button class="btn btn-success" :disabled="hubBusy" @click="hubConfirm(true)">Confirm (SD written + QC ok)</button>
+              <button class="btn btn-success" :disabled="hubBusy || !hubWritten" @click="hubConfirm(true)">Confirm (written + QC ok)</button>
               <button class="btn btn-danger" :disabled="hubBusy" @click="hubConfirm(false)">Release (cancel — free quota)</button>
             </div>
             <div v-if="hubError" class="text-error text-sm mt-8">[[ hubError ]]</div>
@@ -593,6 +606,8 @@ Vue.createApp({
       hubResult: null,      // signed binding {hub_uuid, binding_signature, key_id, signing_keys}
       hubError: '',
       hubBusy: false,
+      hubWritten: false,    // §6.1 binding written to the OPi SD + hub unlocked
+      hubHost: '',          // §6.1 channel target (from /api/hub/host)
       hubDone: false,
       hubDoneUuid: '',
 
@@ -625,6 +640,7 @@ Vue.createApp({
     this.refreshPorts();
     this.initWebSocket();
     this.loadDbStats();
+    axios.get('/api/hub/host').then(r => { this.hubHost = r.data.hub_host || ''; }).catch(() => {});
   },
 
   methods: {
@@ -888,8 +904,18 @@ Vue.createApp({
     },
 
     // ── Hub provisioning (flow B) ──
+    async hubReadCpuid() {
+      // §6.1: read the assembled OPi's cpuid over the provisioning channel.
+      this.hubBusy = true; this.hubError = '';
+      try {
+        const r = await axios.get('/api/hub/read-cpuid');
+        if (r.data && r.data.ok) { this.hubCpuid = r.data.cpuid; this.hubHost = r.data.hub_host || this.hubHost; }
+        else this.hubError = (r.data && r.data.error) || 'read failed';
+      } catch (e) { this.hubError = e.response?.data?.error || e.message; }
+      this.hubBusy = false;
+    },
     async hubProvision() {
-      this.hubBusy = true; this.hubError = ''; this.hubResult = null;
+      this.hubBusy = true; this.hubError = ''; this.hubResult = null; this.hubWritten = false;
       try {
         const r = await axios.post('/api/hub/provision', {
           cpuid: this.hubCpuid.trim(),
@@ -897,6 +923,23 @@ Vue.createApp({
         });
         if (r.data && r.data.ok) this.hubResult = r.data;
         else this.hubError = (r.data && r.data.error) || 'provision failed';
+      } catch (e) { this.hubError = e.response?.data?.error || e.message; }
+      this.hubBusy = false;
+    },
+    async hubWriteToHub() {
+      // §6.1: write the cloud-signed binding onto the OPi's SD; the hub re-verifies + unlocks.
+      if (!this.hubResult) return;
+      this.hubBusy = true; this.hubError = '';
+      try {
+        const r = await axios.post('/api/hub/write-identity', {
+          hub_uuid: this.hubResult.hub_uuid,
+          cpuid: this.hubResult.cpuid || this.hubCpuid.trim(),
+          binding_signature: this.hubResult.binding_signature,
+          key_id: this.hubResult.key_id,
+          signing_keys: this.hubResult.signing_keys,
+        });
+        if (r.data && r.data.ok && r.data.provisioned) this.hubWritten = true;
+        else this.hubError = (r.data && r.data.error) || 'write failed';
       } catch (e) { this.hubError = e.response?.data?.error || e.message; }
       this.hubBusy = false;
     },
@@ -915,7 +958,7 @@ Vue.createApp({
     },
     hubReset() {
       this.hubCpuid = ''; this.hubResult = null; this.hubError = '';
-      this.hubDone = false; this.hubDoneUuid = '';
+      this.hubWritten = false; this.hubDone = false; this.hubDoneUuid = '';
     },
 
     async loadDbStats() {

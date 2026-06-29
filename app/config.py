@@ -21,6 +21,12 @@ STAGE_CLOUD_URLS = {
 _STAGE = os.environ.get("LDPS_STAGE", "").strip().lower()
 DEFAULT_CLOUD_URL = (os.environ.get("CLOUD_URL") or STAGE_CLOUD_URLS.get(_STAGE)
                      or "https://ldpstudioc.zeabur.app")
+
+# §6.1 hub provisioning channel — where the Station reaches the assembled OPi to read its
+# cpuid + write the cloud-signed binding (flow B step-3). Factory transport = USB-gadget/eth
+# link-local; during LAN testing = the OPi's LAN address. Set HUB_HOST to switch.
+# See HUB_IDENTITY_DESIGN §6.1 + ../docs/how-to/STAGE_SWITCH.md.
+HUB_HOST = os.environ.get("HUB_HOST", "http://192.168.8.158:8000").rstrip("/")
 DONGLE_BAUDRATE = 115200
 
 FAKE_UUID = "00000000-0000-4000-a000-000000000000"
