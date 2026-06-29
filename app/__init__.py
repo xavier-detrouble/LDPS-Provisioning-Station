@@ -157,6 +157,12 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup():
         ws_mgr.set_loop(asyncio.get_event_loop())
+        # Auto-restore a persisted manufacturer session (login once on the OPi kiosk).
+        try:
+            from app.routes.cloud import restore_session
+            await restore_session(state)
+        except Exception as _e:
+            log(f"[Factory] session restore skipped: {_e}", "WARNING")
         log("[Factory] LDPS Factory started on port 9000")
 
     @app.on_event("shutdown")

@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 # Runtime artifacts (local yield log + per-run QC reports)
 test_report_*.json
+# Persisted manufacturer session (holds the API key — never commit)
+static/mfr_session.json
+mfr_session.json

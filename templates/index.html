@@ -57,6 +57,18 @@
     .btn-danger { background: var(--error); color: #fff; }
     .btn-outline { background: none; border: 1px solid var(--border); color: var(--text); }
     .btn-outline:hover { border-color: var(--muted); }
+    /* Login gate (shown until logged in) */
+    .gate { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); z-index: 1000; padding: 20px; }
+    .gate-card { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px 24px; text-align: center; }
+    .gate-title { font-weight: 700; font-size: 17px; color: var(--accent); margin-bottom: 4px; }
+    .gate-line { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; margin: 18px 0; }
+    .gate-card .input { margin-bottom: 12px; text-align: center; }
+    .gate-card .btn { width: 100%; margin-bottom: 8px; }
+    .gate-sub { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+    .gate-err { font-size: 12px; color: var(--error); margin-top: 10px; }
+    .offline-banner { background: rgba(239,68,68,0.12); border: 1px solid var(--error); color: var(--error); border-radius: 8px; padding: 8px 12px; font-size: 12px; margin-bottom: 12px; text-align: center; }
+    .nav-status .who { color: var(--text); font-weight: 600; }
+    .nav-logout { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 11px; text-decoration: underline; padding: 0; }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
     /* Wizard — stacked for the portrait column: a horizontal step strip (icons only;
@@ -103,8 +115,42 @@
 </head>
 <body>
 <div id="app">
+
+  <!-- ═══ Login Gate — locked here until logged in to Cloud ═══ -->
+  <div v-if="!cloudConnected" class="gate">
+    <div class="gate-card">
+      <div class="gate-title">LDPS Provisioning Station</div>
+      <div class="gate-sub">All provisioning writes go through the Cloud — log in to continue.</div>
+
+      <div class="gate-line">
+        <span class="status-dot" :class="cloudReachable ? 'on' : 'off'"></span>
+        <span v-if="cloudReachable">Cloud reachable · [[ cloudUrlShort ]]</span>
+        <span v-else style="color:var(--error)">未連到 Cloud — 請先接上網絡</span>
+      </div>
+
+      <!-- saved session: auto / one-tap reconnect, no typing -->
+      <template v-if="hasSavedSession && !showKeyEntry">
+        <div class="gate-sub">已記住 manufacturer 登入 — [[ cloudReachable ? '正在連接…' : '等待網絡…' ]]</div>
+        <button class="btn btn-primary" :disabled="!cloudReachable || gateBusy" @click="cloudRelogin">[[ gateBusy ? '連接中…' : '立即連接' ]]</button>
+        <button class="btn btn-outline" @click="showKeyEntry = true">用其他 key 登入</button>
+        <button class="btn btn-outline" @click="cloudLogout">清除記住的登入</button>
+      </template>
+
+      <!-- key entry (first time / switch manufacturer) -->
+      <template v-else>
+        <input class="input" v-model="apiKey" type="password" placeholder="Manufacturer API Key (mfr_…)"
+               :disabled="!cloudReachable || gateBusy" @keyup.enter="cloudLogin" />
+        <button class="btn btn-primary" :disabled="!cloudReachable || gateBusy || !apiKey.trim()" @click="cloudLogin">[[ gateBusy ? '登入中…' : 'Login' ]]</button>
+        <button v-if="hasSavedSession" class="btn btn-outline" @click="showKeyEntry = false">返回</button>
+      </template>
+
+      <div v-if="loginError" class="gate-err">[[ loginError ]]</div>
+      <div v-if="!bootChecked" class="gate-sub" style="margin-top:12px;">檢查登入狀態…</div>
+    </div>
+  </div>
+
   <!-- Nav Bar -->
-  <div class="nav">
+  <div class="nav" v-show="cloudConnected">
     <div class="nav-title">LDPS Provisioning Station</div>
     <div class="nav-tabs">
       <button class="nav-tab" :class="{active: tab === 'setup'}" @click="tab='setup'">Setup</button>
@@ -115,12 +161,18 @@
     </div>
     <div class="nav-status">
       <span><span class="status-dot" :class="dongleConnected ? 'on' : 'off'"></span>Test Board</span>
-      <span><span class="status-dot" :class="cloudConnected ? 'on' : 'off'"></span>Cloud</span>
+      <span :title="cloudReachable ? 'Cloud connected' : 'Cloud offline'"><span class="status-dot" :class="cloudReachable ? 'on' : 'off'"></span><span class="who">[[ cloudEmail || 'Cloud' ]]</span></span>
+      <button class="nav-logout" @click="cloudLogout">登出</button>
     </div>
   </div>
 
   <!-- Content -->
-  <div class="content">
+  <div class="content" v-show="cloudConnected">
+
+    <!-- Cloud dropped mid-session: stay logged in but block registration (writes need Cloud) -->
+    <div v-if="!cloudReachable" class="offline-banner">
+      ⚠ Cloud 斷線 — 請接上網絡。注冊/寫入功能已暫停(所有注冊都要連到 Cloud)。
+    </div>
 
     <!-- ═══ Setup Tab ═══ -->
     <div v-if="tab === 'setup'">
@@ -377,7 +429,7 @@
                 <div v-if="!quotas.length" class="text-error text-sm mt-8">No quota buckets — log in to Cloud / assign quota first.</div>
               </div>
               <div class="mb-16">
-                <button class="btn btn-primary" :disabled="wizardBusy || !provisionProductType || !quotas.length" @click="wizardFinalize">
+                <button class="btn btn-primary" :disabled="wizardBusy || !cloudReachable || !provisionProductType || !quotas.length" @click="wizardFinalize">
                   [[ wizardBusy ? 'Provisioning...' : 'Provision Real UUID' ]]
                 </button>
               </div>
@@ -457,7 +509,7 @@
           </div>
           <!-- 3. provision (mint + sign) -->
           <div v-if="!hubResult" class="mb-16">
-            <button class="btn btn-primary" :disabled="hubBusy || !cloudConnected || !hubCpuid.trim() || !hubProductType"
+            <button class="btn btn-primary" :disabled="hubBusy || !cloudConnected || !cloudReachable || !hubCpuid.trim() || !hubProductType"
                     @click="hubProvision">[[ hubBusy ? 'Signing…' : 'Provision (mint + sign binding)' ]]</button>
             <div v-if="hubError" class="text-error text-sm mt-8">[[ hubError ]]</div>
           </div>
@@ -481,7 +533,7 @@
               </div>
             </div>
             <div class="row">
-              <button class="btn btn-success" :disabled="hubBusy || !hubWritten" @click="hubConfirm(true)">Confirm (written + QC ok)</button>
+              <button class="btn btn-success" :disabled="hubBusy || !hubWritten || !cloudReachable" @click="hubConfirm(true)">Confirm (written + QC ok)</button>
               <button class="btn btn-danger" :disabled="hubBusy" @click="hubConfirm(false)">Release (cancel — free quota)</button>
             </div>
             <div v-if="hubError" class="text-error text-sm mt-8">[[ hubError ]]</div>
@@ -549,6 +601,13 @@ Vue.createApp({
 
       // Cloud (manufacturer API key)
       cloudConnected: false,
+      cloudReachable: true,   // cloud network reachable (probe)
+      cloudUrl: '',           // resolved cloud target (for the gate display)
+      hasSavedSession: false, // a persisted mfr key exists (login-once)
+      showKeyEntry: false,    // gate: force the key field even when a session is saved
+      gateBusy: false,
+      loginError: '',
+      bootChecked: false,     // first status fetch done (gate stops showing "checking…")
       cloudEmail: '',  // displays manufacturer name
       apiKey: '',
 
@@ -624,6 +683,7 @@ Vue.createApp({
     },
     // ST2: split the quota buckets by device_type so each picker shows its own (missing
     // device_type = legacy → treated as node).
+    cloudUrlShort() { return (this.cloudUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, ''); },
     nodeQuotas() { return (this.quotas || []).filter(q => (q.device_type || 'node') !== 'hub'); },
     hubQuotas() { return (this.quotas || []).filter(q => q.device_type === 'hub'); },
   },
@@ -641,6 +701,9 @@ Vue.createApp({
     this.initWebSocket();
     this.loadDbStats();
     axios.get('/api/hub/host').then(r => { this.hubHost = r.data.hub_host || ''; }).catch(() => {});
+    // Login gate: pick up an auto-restored session + keep cloud/network state fresh.
+    this.refreshCloudStatus();
+    setInterval(() => this.refreshCloudStatus(), 4000);
   },
 
   methods: {
@@ -667,23 +730,57 @@ Vue.createApp({
     },
 
     // ── Cloud ──
+    async refreshCloudStatus() {
+      try {
+        const r = await axios.get('/api/cloud/status');
+        const was = this.cloudConnected;
+        this.cloudConnected = r.data.connected;
+        this.cloudReachable = r.data.reachable;
+        this.cloudUrl = r.data.cloud_url || '';
+        this.hasSavedSession = r.data.has_saved_session;
+        if (r.data.connected) this.cloudEmail = r.data.name || 'Manufacturer';
+        // Login-once: a saved session but not yet connected + network is back → auto-reconnect.
+        if (!r.data.connected && r.data.has_saved_session && r.data.reachable && !this.showKeyEntry && !this.gateBusy) {
+          this.cloudRelogin();
+        }
+        if (this.cloudConnected && !was) this.loadQuota();  // just connected → fill pickers
+      } catch (e) { /* leave last known state */ }
+      this.bootChecked = true;
+    },
     async cloudLogin() {
+      this.gateBusy = true; this.loginError = '';
       try {
         const r = await axios.post('/api/cloud/login', { api_key: this.apiKey });
         if (r.data.ok) {
           this.cloudConnected = true;
+          this.cloudReachable = true;
           this.cloudEmail = r.data.name || 'Manufacturer';
-          this.apiKey = '';  // clear from UI
-          this.loadQuota();  // populate the provision product-type picker
-        }
-      } catch (e) {
-        alert('Login failed: ' + (e.response?.data?.error || e.message));
-      }
+          this.apiKey = ''; this.showKeyEntry = false; this.hasSavedSession = true;
+          this.loadQuota();
+        } else { this.loginError = r.data.error || 'login failed'; }
+      } catch (e) { this.loginError = e.response?.data?.error || e.message; }
+      this.gateBusy = false;
+    },
+    async cloudRelogin() {
+      // Reconnect from the persisted key (no typing).
+      this.gateBusy = true; this.loginError = '';
+      try {
+        const r = await axios.post('/api/cloud/relogin');
+        if (r.data.ok) {
+          this.cloudConnected = true; this.cloudReachable = true;
+          this.cloudEmail = r.data.name || 'Manufacturer';
+          this.loadQuota();
+        } else { this.loginError = r.data.error || 'reconnect failed'; }
+      } catch (e) { this.loginError = e.response?.data?.error || e.message; }
+      this.gateBusy = false;
     },
     async cloudLogout() {
       await axios.post('/api/cloud/logout');
       this.cloudConnected = false;
       this.cloudEmail = '';
+      this.hasSavedSession = false;
+      this.showKeyEntry = false;
+      this.quotas = [];
     },
 
     // ── Flash ──
