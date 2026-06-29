@@ -126,13 +126,13 @@ async def finalize(request: Request, mac: str, data: dict = Body(...)):
         return JSONResponse({"error": "Not logged in to Cloud"}, 401)
 
     port = data.get("port")
-    product_type = data.get("product_type")
+    product = data.get("product")   # the catalog product key (ADR-0008)
     test_results = data.get("test_results")
     firmware_ver = data.get("firmware_ver", "")
     if not port:
         return JSONResponse({"error": "port required (node USB serial port)"}, 400)
-    if not product_type:
-        return JSONResponse({"error": "product_type required (QC gate)"}, 400)
+    if not product:
+        return JSONResponse({"error": "product required (QC gate)"}, 400)
 
     # P1 GUARD — USB is the AUTHORITATIVE identity channel: it is the link we actually
     # write to, whereas the RF-discovered `mac` is a separate node that merely answered
@@ -155,7 +155,7 @@ async def finalize(request: Request, mac: str, data: dict = Body(...)):
     hw_serial = usb_mac
 
     # Step 1: mint UUID + genuineness signature from Cloud.
-    minted = await s.cloud_client.request_uuid(hw_serial, product_type, test_results, firmware_ver)
+    minted = await s.cloud_client.request_uuid(hw_serial, product, test_results, firmware_ver)
     if not minted or not minted.get("uuid"):
         return JSONResponse({"error": "Failed to get UUID from Cloud"}, 502)
     uuid = minted["uuid"]
@@ -191,7 +191,7 @@ async def finalize(request: Request, mac: str, data: dict = Body(...)):
     if not getattr(s, "provision_log", None):
         s.provision_log = ProvisionLog()
     s.provision_log.add(
-        mac=mac, uuid=uuid, product_type=product_type,
+        mac=mac, uuid=uuid, product_type=product,
         firmware_ver=firmware_ver or "?", test_results=test_results,
         status="success", cloud_confirmed=confirmed, recovery_key=recovery_key,
     )
@@ -244,7 +244,7 @@ async def report_fail(request: Request, mac: str, data: dict = Body(default={}))
     await _record_fail(s, mac,
                        reason=data.get("reason", "QC failed"),
                        test_results=data.get("test_results"),
-                       product_type=data.get("product_type", ""),
+                       product_type=data.get("product", ""),
                        firmware_ver=data.get("firmware_ver", ""))
     return {"ok": True, "failed": s.stats_failed}
 

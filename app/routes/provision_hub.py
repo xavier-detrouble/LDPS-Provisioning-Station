@@ -36,14 +36,14 @@ async def hub_provision(request: Request, data: dict = Body(...)):
     if not _need_cloud(s):
         return JSONResponse({"error": "Not logged in to Cloud"}, 401)
     cpuid = (data.get("cpuid") or "").strip()
-    product_type = data.get("product_type")
+    product = data.get("product")   # the catalog product key (ADR-0008)
     if not cpuid:
         return JSONResponse({"error": "cpuid required (read from the assembled OPi)"}, 400)
-    if not product_type:
-        return JSONResponse({"error": "product_type required (QC gate)"}, 400)
+    if not product:
+        return JSONResponse({"error": "product required (QC gate)"}, 400)
 
     res = await s.cloud_client.provision_hub(
-        cpuid, product_type,
+        cpuid, product,
         test_results=data.get("test_results"),
         firmware_ver=data.get("firmware_ver", ""),
         provision_batch=data.get("provision_batch", ""))
@@ -56,7 +56,7 @@ async def hub_provision(request: Request, data: dict = Body(...)):
 
     # Hold the signed binding on the wizard state so the GUI can show it and the
     # step-3 SD write can consume it without re-minting.
-    s.hub_pending = {"hub_uuid": res["hub_uuid"], "cpuid": cpuid, "product_type": product_type}
+    s.hub_pending = {"hub_uuid": res["hub_uuid"], "cpuid": cpuid, "product": product}
     if s.ws:
         s.ws.broadcast("hub_provision", {"step": "signed", "hub_uuid": res["hub_uuid"], "cpuid": cpuid})
     log(f"[HubProvision] signed binding: hub_uuid={res['hub_uuid']} cpuid={cpuid[:12]}… key_id={res.get('key_id')}")

@@ -55,9 +55,9 @@ class CloudClient:
         result = await self.login(self.api_key)
         return result.get("quotas", self.quotas)
 
-    async def request_uuid(self, hardware_serial: str, product_type: str,
+    async def request_uuid(self, hardware_serial: str, product: str,
                            test_results: dict = None, firmware_ver: str = "") -> dict | None:
-        """Mint a node UUID. product_type is REQUIRED (cloud QC gate). Returns
+        """Mint a node UUID. product (the catalog product key) is REQUIRED (cloud QC gate). Returns
         {uuid, signature, key_id, recovery_key} — signature is the cloud's Ed25519
         genuineness sig over the UUID, written to the node over USB and verified by
         Hubs; recovery_key is the per-node re-claim key (returned ONCE, plaintext) the
@@ -69,7 +69,7 @@ class CloudClient:
                 r = await client.post(f"{self.cloud_url}/provision/request-uuid",
                                       json={
                                           "hardware_serial": hardware_serial,
-                                          "product_type": product_type,
+                                          "product": product,
                                           "test_results": test_results,
                                           "firmware_ver": firmware_ver,
                                       },
@@ -116,20 +116,20 @@ class CloudClient:
     #    The binding_signature + signing_keys are written to the Hub's SD via the Hub
     #    provisioning channel (the "发去hub" step, later); the cloud keeps only key_id.
 
-    async def provision_hub(self, cpuid: str, product_type: str,
+    async def provision_hub(self, cpuid: str, product: str,
                             test_results: dict = None, firmware_ver: str = "",
                             provision_batch: str = "") -> dict:
         """Reserve + sign a hub binding. Returns the cloud response dict:
         success → {ok: True, hub_uuid, cpuid, binding_signature, key_id, signing_keys};
         failure → {ok: False, error, code?}  (codes: UNKNOWN_PRODUCT_TYPE,
-        QUOTA_EXHAUSTED, QUOTA_NOT_FOUND, CPUID_EXISTS). product_type must be an
-        active device_type='hub' catalog entry."""
+        QUOTA_EXHAUSTED, QUOTA_NOT_FOUND, CPUID_EXISTS). product (the catalog product key)
+        must be an active hub-flow product."""
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.post(f"{self.cloud_url}/provision/hub",
                                       json={
                                           "cpuid": cpuid,
-                                          "product_type": product_type,
+                                          "product": product,
                                           "test_results": test_results,
                                           "firmware_ver": firmware_ver or None,
                                           "provision_batch": provision_batch or None,

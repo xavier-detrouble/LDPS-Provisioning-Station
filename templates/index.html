@@ -248,7 +248,7 @@
           <table class="table" v-if="quotas.length">
             <tr><th>Product Type</th><th>Quota</th><th>Used</th><th>Remaining</th></tr>
             <tr v-for="q in quotas">
-              <td>[[ q.product_type ]]</td><td>[[ q.quota ]]</td><td>[[ q.used ]]</td>
+              <td>[[ q.product ]]</td><td>[[ q.quota ]]</td><td>[[ q.used ]]</td>
               <td :class="q.quota - q.used > 0 ? 'text-success' : 'text-error'">[[ q.quota - q.used ]]</td>
             </tr>
           </table>
@@ -422,8 +422,8 @@
               <div class="mb-16" style="max-width:340px;">
                 <label class="text-sm text-muted">Product type (quota bucket)</label>
                 <select class="input" v-model="provisionProductType" style="width:100%;">
-                  <option v-for="q in nodeQuotas" :value="q.product_type" :disabled="q.quota - q.used <= 0">
-                    [[ q.product_type ]] — [[ q.quota - q.used ]] left
+                  <option v-for="q in nodeQuotas" :value="q.product" :disabled="q.quota - q.used <= 0">
+                    [[ q.product ]] — [[ q.quota - q.used ]] left
                   </option>
                 </select>
                 <div v-if="!quotas.length" class="text-error text-sm mt-8">No quota buckets — log in to Cloud / assign quota first.</div>
@@ -499,12 +499,12 @@
           <div class="mb-16" style="max-width:360px;">
             <label class="text-sm text-muted">Hub product type (quota bucket)</label>
             <select class="input" v-model="hubProductType" style="width:100%;" :disabled="!!hubResult">
-              <option v-for="q in hubQuotas" :value="q.product_type" :disabled="q.quota - q.used <= 0">
-                [[ q.product_type ]] — [[ q.quota - q.used ]] left
+              <option v-for="q in hubQuotas" :value="q.product" :disabled="q.quota - q.used <= 0">
+                [[ q.product ]] — [[ q.quota - q.used ]] left
               </option>
             </select>
             <div v-if="cloudConnected && !hubQuotas.length" class="text-error text-sm mt-8">
-              No hub quota buckets — assign a device_type='hub' quota in admin first.
+              No hub quota buckets — assign a quota on a hub-flow product in admin first.
             </div>
           </div>
           <!-- 3. provision (mint + sign) -->
@@ -681,11 +681,10 @@ Vue.createApp({
       const r = this.hwTestResults;
       return r.sd === true && r.rf === true && r.nvs === true && r.led === true;
     },
-    // ST2: split the quota buckets by device_type so each picker shows its own (missing
-    // device_type = legacy → treated as node).
+    // ST2: split the quota buckets by family provision_flow so each picker shows its own.
     cloudUrlShort() { return (this.cloudUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, ''); },
-    nodeQuotas() { return (this.quotas || []).filter(q => (q.device_type || 'node') !== 'hub'); },
-    hubQuotas() { return (this.quotas || []).filter(q => q.device_type === 'hub'); },
+    nodeQuotas() { return (this.quotas || []).filter(q => q.provision_flow === 'node'); },
+    hubQuotas() { return (this.quotas || []).filter(q => q.provision_flow === 'hub'); },
   },
 
   watch: {
@@ -810,7 +809,7 @@ Vue.createApp({
       try {
         if (this.selectedMac) {
           await axios.post('/api/provision/report-fail/' + this.selectedMac, {
-            reason, product_type: this.provisionProductType, test_results: this.hwTestResults,
+            reason, product: this.provisionProductType, test_results: this.hwTestResults,
           });
         } else { this.statsFailed++; }
       } catch (e) { this.statsFailed++; }
@@ -971,8 +970,8 @@ Vue.createApp({
       this.provisionResult = null;
       try {
         const r = await axios.post('/api/provision/finalize/' + this.selectedMac, {
-          port: this.nodePort,                       // node USB port (identity written over USB)
-          product_type: this.provisionProductType,   // required by cloud QC gate
+          port: this.nodePort,                  // node USB port (identity written over USB)
+          product: this.provisionProductType,   // the catalog product key — required by cloud QC gate
           test_results: this.hwTestResults,
         });
         this.provisionResult = r.data;
@@ -994,8 +993,8 @@ Vue.createApp({
       // Default each picker to its first non-exhausted bucket, unless the current pick is
       // still valid. node picker ← nodeQuotas, hub picker ← hubQuotas (ST2).
       const pick = (list, cur) =>
-        (list.find(q => q.product_type === cur && (q.quota - q.used) > 0) ? cur
-         : (list.find(q => (q.quota - q.used) > 0) || {}).product_type || '');
+        (list.find(q => q.product === cur && (q.quota - q.used) > 0) ? cur
+         : (list.find(q => (q.quota - q.used) > 0) || {}).product || '');
       this.provisionProductType = pick(this.nodeQuotas, this.provisionProductType);
       this.hubProductType = pick(this.hubQuotas, this.hubProductType);
     },
@@ -1016,7 +1015,7 @@ Vue.createApp({
       try {
         const r = await axios.post('/api/hub/provision', {
           cpuid: this.hubCpuid.trim(),
-          product_type: this.hubProductType,
+          product: this.hubProductType,
         });
         if (r.data && r.data.ok) this.hubResult = r.data;
         else this.hubError = (r.data && r.data.error) || 'provision failed';
