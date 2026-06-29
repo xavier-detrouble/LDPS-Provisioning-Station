@@ -70,9 +70,14 @@ CLOUD_URL=http://localhost:3737 PORT=9000 python3 main.py
 - `LDPS-Hardware/docs/provisioning/HUB_IDENTITY_DESIGN.md` — hub flow B (§5), factory-access
   channel (§6.1), the Station/Hub change register (§8.3/§8.4), execution log (§13).
 
-## Status (2026-06-26)
+## Status (2026-06-29)
 
-Node provisioning + flash + product_type picker = built. Hub role: cloud_client +
-`/api/hub/*` routes + ST3 fail-record **DONE+verified** (vs real cloud). **Remaining
-(#35):** the hub provision GUI tab + ST2 hub product_type picker + the §6.1 SD-write
-transport to the OPi (real HW). Build order: cloud → GUI → HW.
+Node provisioning + flash + product_type picker = built. Hub role (flow B) fully
+built: cloud_client + `/api/hub/*` routes + ST3 fail-record + GUI Provision Hub tab
+(cpuid + ST2 product_type picker + sign) + the **§6.1 SD-write channel both sides**
+— Station `read-cpuid`/`write-identity` proxy (LAN HTTP via `HUB_HOST`; USB-gadget
+later) ↔ Hub `/api/provision/{cpuid,identity}`. Verified vs the real OPi: read-cpuid
+ok, garbage binding refused (hub stays locked, nothing written). **Remaining:** the
+write-success E2E run (needs a UAT manufacturer + hub quota = operator-driven via the
+GUI) and swapping the §6.1 transport from LAN HTTP to USB-gadget. Hub side:
+`LDPS-Control-Hub@8b7cce9`.
