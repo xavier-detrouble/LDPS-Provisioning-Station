@@ -12,6 +12,7 @@ class AppState:
         self.dongle_ready = False
 
         # Cloud
+        self.cloud_client = None   # CloudClient once logged in (mfr key); None before/after
         self.cloud_url = ""
         self.cloud_token = ""
         self.cloud_email = ""
