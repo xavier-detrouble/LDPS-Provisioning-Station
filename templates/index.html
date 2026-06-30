@@ -131,27 +131,27 @@
       <div class="gate-line">
         <span class="status-dot" :class="cloudReachable ? 'on' : 'off'"></span>
         <span v-if="cloudReachable">Cloud reachable · [[ cloudUrlShort ]]</span>
-        <span v-else style="color:var(--error)">未連到 Cloud — 請先接上網絡</span>
+        <span v-else style="color:var(--error)">Cloud unreachable — connect to a network first</span>
       </div>
 
       <!-- saved session: auto / one-tap reconnect, no typing -->
       <template v-if="hasSavedSession && !showKeyEntry">
-        <div class="gate-sub">已記住 manufacturer 登入 — [[ cloudReachable ? '正在連接…' : '等待網絡…' ]]</div>
-        <button class="btn btn-primary" :disabled="!cloudReachable || gateBusy" @click="cloudRelogin">[[ gateBusy ? '連接中…' : '立即連接' ]]</button>
-        <button class="btn btn-outline" @click="showKeyEntry = true">用其他 key 登入</button>
-        <button class="btn btn-outline" @click="cloudLogout">清除記住的登入</button>
+        <div class="gate-sub">Saved manufacturer login — [[ cloudReachable ? 'connecting…' : 'waiting for network…' ]]</div>
+        <button class="btn btn-primary" :disabled="!cloudReachable || gateBusy" @click="cloudRelogin">[[ gateBusy ? 'Connecting…' : 'Connect now' ]]</button>
+        <button class="btn btn-outline" @click="showKeyEntry = true">Use a different key</button>
+        <button class="btn btn-outline" @click="cloudLogout">Forget saved login</button>
       </template>
 
       <!-- key entry (first time / switch manufacturer) -->
       <template v-else>
         <input class="input" v-model="apiKey" type="password" placeholder="Manufacturer API Key (mfr_…)"
                :disabled="!cloudReachable || gateBusy" @keyup.enter="cloudLogin" />
-        <button class="btn btn-primary" :disabled="!cloudReachable || gateBusy || !apiKey.trim()" @click="cloudLogin">[[ gateBusy ? '登入中…' : 'Login' ]]</button>
-        <button v-if="hasSavedSession" class="btn btn-outline" @click="showKeyEntry = false">返回</button>
+        <button class="btn btn-primary" :disabled="!cloudReachable || gateBusy || !apiKey.trim()" @click="cloudLogin">[[ gateBusy ? 'Signing in…' : 'Login' ]]</button>
+        <button v-if="hasSavedSession" class="btn btn-outline" @click="showKeyEntry = false">Back</button>
       </template>
 
       <div v-if="loginError" class="gate-err">[[ loginError ]]</div>
-      <div v-if="!bootChecked" class="gate-sub" style="margin-top:12px;">檢查登入狀態…</div>
+      <div v-if="!bootChecked" class="gate-sub" style="margin-top:12px;">Checking login status…</div>
     </div>
   </div>
 
@@ -168,7 +168,7 @@
     <div class="nav-status">
       <span><span class="status-dot" :class="dongleConnected ? 'on' : 'off'"></span>Test Board</span>
       <span :title="cloudReachable ? 'Cloud connected' : 'Cloud offline'"><span class="status-dot" :class="cloudReachable ? 'on' : 'off'"></span><span class="who">[[ cloudEmail || 'Cloud' ]]</span></span>
-      <button class="nav-logout" @click="cloudLogout">登出</button>
+      <button class="nav-logout" @click="cloudLogout">Logout</button>
     </div>
   </div>
 
@@ -177,7 +177,7 @@
 
     <!-- Cloud dropped mid-session: stay logged in but block registration (writes need Cloud) -->
     <div v-if="!cloudReachable" class="offline-banner">
-      ⚠ Cloud 斷線 — 請接上網絡。注冊/寫入功能已暫停(所有注冊都要連到 Cloud)。
+      ⚠ Cloud disconnected — connect to a network. Registration / writes are paused (all registration needs the Cloud).
     </div>
 
     <!-- ═══ Overview Tab — the provisioning pipeline at a glance ═══ -->
@@ -239,46 +239,53 @@
 
     <!-- ═══ Provision Node Tab (Wizard) ═══ -->
     <div v-if="tab === 'provision'">
-      <!-- Test Board (dongle) — used for the RF steps (discover / hardware test / playback).
-           Lives here in the node context, not on a separate Setup page. -->
-      <div class="card" style="margin-bottom:12px;padding:10px 14px;">
-        <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap;">
-          <span class="text-sm text-muted" style="white-space:nowrap;">Test Board (dongle):</span>
-          <span><span class="status-dot" :class="dongleConnected ? 'on' : 'off'"></span>[[ dongleConnected ? donglePort : 'not connected' ]]</span>
-          <!-- Auto-detect is the primary path — the operator shouldn't have to know which port is the dongle. -->
-          <button v-if="!dongleConnected" class="btn btn-primary" :disabled="dongleDetecting" @click="detectDongle">
-            [[ dongleDetecting ? 'Detecting…' : '🔍 Detect Test Board' ]]
-          </button>
-          <button v-else class="btn btn-outline" @click="disconnectDongle">Disconnect</button>
-        </div>
-        <!-- Manual fallback (only if auto-detect can't find it) -->
-        <div v-if="!dongleConnected" class="row" style="align-items:center;gap:6px;margin-top:8px;">
-          <span class="text-muted" style="font-size:11px;white-space:nowrap;">…or pick manually:</span>
-          <select class="input" v-model="donglePort" style="flex:1;min-width:140px;font-size:12px;">
-            <option value="">Select port…</option>
-            <option v-for="p in serialPorts" :value="p.device">[[ p.device ]] — [[ p.description ]]</option>
-          </select>
-          <button class="btn btn-outline" @click="refreshPorts" title="Refresh ports">&#x21bb;</button>
-          <button class="btn btn-outline" :disabled="!donglePort" @click="connectDongle">Connect</button>
-        </div>
-        <div v-if="dongleError" class="text-error text-sm" style="margin-top:6px;">[[ dongleError ]]</div>
-        <div class="text-muted text-sm" style="margin-top:4px;">Needed for the RF steps. Click <strong>Detect</strong> and the Station finds the dongle for you; the node USB port is auto-detected.</div>
+      <!-- Test Board (dongle) — fully automatic: auto-detected on entry, auto-reconnected on drop.
+           No Disconnect button. During the flow a compact status shows; idle uses the readiness panel. -->
+      <div v-if="flowState !== 'idle'" class="card" style="margin-bottom:12px;padding:8px 14px;">
+        <span class="text-sm text-muted">Test Board:</span>
+        <span style="margin-left:6px;"><span class="status-dot" :class="dongleConnected ? 'on' : 'off'"></span>[[ dongleConnected ? donglePort : (dongleDetecting ? 'reconnecting…' : 'disconnected') ]]</span>
+        <button v-if="!dongleConnected && !dongleDetecting" class="btn btn-outline" style="margin-left:10px;padding:4px 10px;font-size:12px;" @click="detectDongle">&#x21bb; Reconnect</button>
       </div>
 
       <!-- ═══ Automated node provisioning (auto-flow) — runs the whole sequence; the operator
            only confirms the Visual check + handles a failure. Each phase shows live progress +
            result; results land in provision_log + cloud (node.test_results). ═══ -->
       <div class="card">
-        <!-- IDLE: Start -->
-        <div v-if="flowState === 'idle'" style="text-align:center;padding:22px 16px;">
-          <div style="font-size:40px;margin-bottom:8px;">&#x1F3ED;</div>
-          <div style="font-weight:700;font-size:16px;margin-bottom:6px;">Automated Node Provisioning</div>
-          <div class="text-muted text-sm" style="max-width:440px;margin:0 auto 16px;">
-            Place the node on the rig (USB + powered) and connect the Test Board above. Press Start —
-            the Station runs <strong>flash → format → discover → hardware test → visual → provision</strong> automatically.
+        <!-- IDLE: readiness pre-check — the operator SEES everything is ready before Start
+             (no detect-after-Start edge cases). The Station polls while idle so a node/dongle
+             plugged in shows up automatically. -->
+        <div v-if="flowState === 'idle'" style="padding:18px 16px;">
+          <div style="text-align:center;margin-bottom:16px;">
+            <div style="font-size:36px;">&#x1F3ED;</div>
+            <div style="font-weight:700;font-size:16px;">Automated Node Provisioning</div>
+            <div class="text-muted text-sm">Place a blank node on the rig (USB + powered) — the Station checks everything is ready before you start.</div>
           </div>
-          <button class="btn btn-primary" style="font-size:16px;padding:12px 34px;" :disabled="!dongleConnected || !cloudReachable" @click="startNodeFlow">&#x25B6; Start</button>
-          <div v-if="!dongleConnected" style="margin-top:8px;color:#fbbf24;font-size:13px;">Connect the Test Board (above) first.</div>
+          <div style="max-width:460px;margin:0 auto;">
+            <!-- Test Board -->
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid;border-radius:8px;margin-bottom:8px;" :style="{borderColor: nodeReady.dongle?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.07)'}">
+              <span style="width:20px;font-weight:700;font-size:15px;" :style="{color: nodeReady.dongle?'#4ade80':'#64748b'}">[[ nodeReady.dongle?'✓':'○' ]]</span>
+              <span style="min-width:140px;font-weight:600;">Test Board (dongle)</span>
+              <span class="text-muted text-sm" style="flex:1;">[[ nodeReady.dongle ? donglePort : (nodeReady.checking ? 'detecting…' : 'not found — plug it in') ]]</span>
+            </div>
+            <!-- Node on USB -->
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid;border-radius:8px;margin-bottom:8px;" :style="{borderColor: nodeReady.node?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.07)'}">
+              <span style="width:20px;font-weight:700;font-size:15px;" :style="{color: nodeReady.node?'#4ade80':(nodeReady.nodeBlocked?'#ef4444':'#64748b')}">[[ nodeReady.node?'✓':(nodeReady.nodeBlocked?'✗':'○') ]]</span>
+              <span style="min-width:140px;font-weight:600;">Node on USB</span>
+              <span class="text-sm" style="flex:1;" :style="{color: nodeReady.nodeBlocked?'#fca5a5':'var(--muted)'}">[[ nodeReady.nodePort ? (nodeReady.nodePort + ' · ' + nodeReady.nodeState) : (nodeReady.checking ? 'checking…' : (nodeReady.nodeState || 'plug a node in')) ]]</span>
+            </div>
+            <!-- Cloud + quota -->
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid;border-radius:8px;" :style="{borderColor: nodeReady.cloud?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.07)'}">
+              <span style="width:20px;font-weight:700;font-size:15px;" :style="{color: nodeReady.cloud?'#4ade80':'#64748b'}">[[ nodeReady.cloud?'✓':'○' ]]</span>
+              <span style="min-width:140px;font-weight:600;">Cloud + quota</span>
+              <span class="text-muted text-sm" style="flex:1;">[[ nodeReady.cloud ? ((provisionProductType||'node') + ' — quota available') : 'cloud offline or no quota' ]]</span>
+            </div>
+          </div>
+          <div style="text-align:center;margin-top:18px;">
+            <button class="btn btn-primary" style="font-size:16px;padding:12px 34px;" :disabled="!nodeAllReady" @click="startNodeFlow">&#x25B6; Start</button>
+            <button class="btn btn-outline" style="margin-left:8px;" :disabled="nodeReady.checking" @click="checkReady(true)">[[ nodeReady.checking ? 'Checking…' : '↻ Re-check' ]]</button>
+            <div v-if="dongleError" class="text-error text-sm" style="margin-top:8px;">[[ dongleError ]]</div>
+            <div v-if="!nodeAllReady && !nodeReady.checking" class="text-muted text-sm" style="margin-top:8px;">Start enables once all three are ready.</div>
+          </div>
         </div>
 
         <!-- RUNNING / VISUAL / FAILED / DONE -->
@@ -328,7 +335,7 @@
               <div class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:1px;">Recovery key — print on the box</div>
               <div style="font-size:26px;font-weight:700;letter-spacing:3px;font-family:monospace;">[[ flowProvision.recovery_key ]]</div>
             </div>
-            <button class="btn btn-primary" @click="startNodeFlow">Provision Next Node &#x25B6;</button>
+            <button class="btn btn-primary" @click="nextNode">Provision Next Node &#x25B6;</button>
           </div>
         </div>
       </div>
@@ -701,6 +708,7 @@ Vue.createApp({
       flowResults: {},           // accumulated test_results → cloud node.test_results + provision_log
       flowProvision: null,       // {uuid, recovery_key}
       flowPhaseIdx: 0,
+      nodeReady: { dongle: false, node: false, nodeBlocked: false, nodePort: '', nodeState: '', cloud: false, checking: false },
       nodeFlow: [
         { key: 'flash',    name: 'Flash firmware', status: 'pending', detail: '' },
         { key: 'format',   name: 'Format SD',      status: 'pending', detail: '' },
@@ -801,6 +809,7 @@ Vue.createApp({
     // ST2: split the quota buckets by family provision_flow so each picker shows its own.
     cloudUrlShort() { return (this.cloudUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, ''); },
     nodeQuotas() { return (this.quotas || []).filter(q => q.provision_flow === 'node'); },
+    nodeAllReady() { return this.nodeReady.dongle && this.nodeReady.node && this.nodeReady.cloud; },
     hubQuotas() { return (this.quotas || []).filter(q => q.provision_flow === 'hub'); },
   },
 
@@ -808,12 +817,10 @@ Vue.createApp({
     tab(val) {
       if (val === 'dashboard') { this.loadDbStats(); if (this.cloudConnected) this.loadQuota(); }
       if (val === 'provision' && this.cloudConnected) this.loadQuota();
-      // Entering the node flow: auto-detect the Test Board once so the operator
-      // doesn't have to pick a port (the RF steps need it). Manual fallback stays.
-      if (val === 'provision' && !this.dongleConnected && !this._dongleAutoTried) {
-        this._dongleAutoTried = true;
-        this.detectDongle();
-      }
+      // Entering the node flow: start the readiness pre-check (auto-detects the Test Board +
+      // node USB port + quota, and polls while idle so a plugged-in unit shows up). Stop it on exit.
+      if (val === 'provision') this._startReadyPoll();
+      else this._stopReadyPoll();
       if (val === 'hub' && this.cloudConnected) this.loadQuota();
       if (val === 'history') this.loadHistory();
     },
@@ -891,10 +898,73 @@ Vue.createApp({
       if (cand.length === 0) throw new Error('No node on USB — plug the node in (and connect the Test Board so it can be told apart).');
       throw new Error('Multiple USB devices (' + cand.join(', ') + ') — unplug extras.');
     },
+    // Readiness pre-check (idle screen): the operator SEES the dongle + a blank node + quota
+    // are ready BEFORE Start — so the flow never fails on a detect-after-Start edge case.
+    async checkReady(deep) {
+      if (this.nodeReady.checking) return;
+      this.nodeReady.checking = true;
+      try {
+        if (!this.dongleConnected) { try { await this.detectDongle(); } catch (e) {} }
+        this.nodeReady.dongle = this.dongleConnected;
+        this.nodeReady.cloud = this.cloudReachable && (this.nodeQuotas || []).some(q => (q.quota - q.used) > 0);
+        await this.refreshPorts();
+        const isUsb = d => /usbmodem|ttyACM|ttyUSB|wchusbserial|SLAB/.test(d);
+        const cand = (this.serialPorts || []).map(p => p.device).filter(d => isUsb(d) && d !== this.donglePort);
+        if (cand.length !== 1) {
+          this.nodeReady.node = false; this.nodeReady.nodeBlocked = false; this.nodeReady.nodePort = '';
+          this.nodeReady._readPort = '';
+          this.nodeReady.nodeState = cand.length === 0 ? 'no node on USB' : 'multiple USB devices — unplug extras';
+          return;
+        }
+        const port = cand[0];
+        this.nodeReady.nodePort = port;
+        // Deep read (blank vs already-provisioned) only on a port change / explicit Re-check —
+        // opening the serial port resets the node, so don't do it on every poll.
+        if (deep || port !== this.nodeReady._readPort) {
+          this.nodeReady._readPort = port;
+          try {
+            const r = await axios.post('/api/provision/read-node', { port });
+            if (r.data && r.data.uuid) {
+              this.nodeReady.node = false; this.nodeReady.nodeBlocked = true;
+              this.nodeReady.nodeState = 'already provisioned — clear it first';
+            } else {
+              this.nodeReady.node = true; this.nodeReady.nodeBlocked = false;
+              this.nodeReady.nodeState = 'ready (blank · fw ' + (r.data.fw || '?') + ')';
+            }
+          } catch (e) {
+            // no serial response → a blank node with no firmware yet → ready (it gets flashed)
+            this.nodeReady.node = true; this.nodeReady.nodeBlocked = false;
+            this.nodeReady.nodeState = 'ready (no firmware — will flash)';
+          }
+        } else {
+          this.nodeReady.node = !this.nodeReady.nodeBlocked;
+        }
+      } finally {
+        this.nodeReady.checking = false;
+      }
+    },
+    _startReadyPoll() {
+      this._stopReadyPoll();
+      this.checkReady(true);
+      this._readyTimer = setInterval(() => {
+        if (this.tab === 'provision' && this.flowState === 'idle') this.checkReady(false);
+        else this._stopReadyPoll();
+      }, 3000);
+    },
+    _stopReadyPoll() { if (this._readyTimer) { clearInterval(this._readyTimer); this._readyTimer = null; } },
+    nextNode() {
+      this.flowState = 'idle';
+      this.nodeFlow.forEach(p => { p.status = 'pending'; p.detail = ''; });
+      this.flowProvision = null; this.flowResults = {}; this.flowMac = '';
+      this.nodeReady._readPort = '';   // force a fresh deep read for the next unit
+      this._startReadyPoll();
+    },
     async startNodeFlow() {
+      this._stopReadyPoll();
       this.nodeFlow.forEach(p => { p.status = 'pending'; p.detail = ''; });
       this.flowResults = {}; this.flowProvision = null; this.flowMac = '';
-      this.flowNodePort = ''; this.flowFailMsg = ''; this.flowProgress = 0;
+      this.flowNodePort = this.nodeReady.nodePort || '';   // the port the readiness check found
+      this.flowFailMsg = ''; this.flowProgress = 0;
       await this._runFlowFrom(0);
     },
     async _runFlowFrom(startIdx) {
@@ -932,6 +1002,8 @@ Vue.createApp({
       } catch (e) { /* yield record best-effort */ }
       this.flowState = 'idle';
       this.nodeFlow.forEach(p => { p.status = 'pending'; p.detail = ''; });
+      this.nodeReady._readPort = '';
+      this._startReadyPoll();
     },
     _runPhase(key) {
       if (key === 'flash')     return this._phaseFlash();
@@ -943,8 +1015,7 @@ Vue.createApp({
       return Promise.resolve();
     },
     async _phaseFlash() {
-      await this.refreshPorts();
-      this.flowNodePort = this._resolveNodePort();
+      if (!this.flowNodePort) { await this.refreshPorts(); this.flowNodePort = this._resolveNodePort(); }
       this._setPhase('flash', 'running', 'Flashing ' + this.flowNodePort + ' …');
       await axios.post('/api/flash/start', { port: this.flowNodePort });
       for (;;) {
@@ -1427,6 +1498,12 @@ Vue.createApp({
     onWsMessage(topic, data) {
       if (topic === 'dongle') {
         this.dongleConnected = data.connected;
+        if (data.connected && data.port) this.donglePort = data.port;
+        // No Disconnect button — the dongle is fully auto. On an unexpected drop, re-detect
+        // (the idle readiness poll also recovers it; this covers a drop mid-flow).
+        if (!data.connected && this.tab === 'provision') {
+          setTimeout(() => { if (!this.dongleConnected) this.detectDongle(); }, 1500);
+        }
       } else if (topic === 'cloud') {
         this.cloudConnected = data.connected;
         if (data.email) this.cloudEmail = data.email;
