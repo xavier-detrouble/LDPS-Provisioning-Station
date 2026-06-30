@@ -329,13 +329,32 @@
               <div v-else-if="!wizardBusy" class="text-muted">No nodes found. Click Discover to scan.</div>
             </div>
 
-            <!-- Step 2: Hardware Test -->
+            <!-- Step 2: Hardware Test (RF self-check via the Test Board) -->
             <div v-if="wizardIdx === 2" style="padding:16px 0;">
               <div class="mb-8 text-muted">Node: [[ selectedMac ]]</div>
-              <button class="btn btn-primary mb-16" :disabled="wizardBusy" @click="wizardHwTest">
+              <!-- The RF hardware test runs over the Test Board (dongle). A missing/disconnected Test
+                   Board is an OPERATOR SETUP issue, NOT a node fault — guide to connect it; never fail
+                   the node for it (failing it would wrongly burn a quota slot + skew yield). -->
+              <div v-if="!dongleConnected" class="mb-16" style="padding:8px 12px;border:1px solid #f59e0b;border-radius:6px;background:rgba(245,158,11,0.10);color:#fbbf24;">
+                ⚠ Connect the <strong>Test Board (dongle)</strong> at the top of this page first — the hardware test runs over RF through it.
+              </div>
+              <button class="btn btn-primary mb-16" :disabled="wizardBusy || !dongleConnected" @click="wizardHwTest">
                 [[ wizardBusy ? 'Testing...' : 'Run Hardware Test' ]]
               </button>
-              <div v-if="hwTestResults">
+              <!-- Transport/setup error (Test Board gone, RF timeout, node not responding): RETRY —
+                   don't auto-fail the node. A deliberate "node is faulty" escape hatch stays available. -->
+              <div v-if="hwTestResults && hwTestResults.error" class="mb-8">
+                <div style="padding:8px 12px;border:1px solid var(--error);border-radius:6px;background:rgba(239,68,68,0.08);" class="text-error">
+                  ⚠ Couldn't run the test: [[ hwTestResults.error ]].<br>
+                  This is a connection/setup issue, not a node fault — check the Test Board + node, then retry.
+                </div>
+                <div style="margin-top:12px;">
+                  <button class="btn btn-primary" :disabled="wizardBusy" @click="wizardHwTest">Retry</button>
+                  <button class="btn btn-outline" style="margin-left:8px;" @click="wizardFail('HW_TEST: node not responding')">Node is faulty — fail it</button>
+                </div>
+              </div>
+              <!-- Real node results (sd/rf/oled/ina/led/nvs …) -->
+              <div v-else-if="hwTestResults">
                 <table class="table">
                   <tr><th>Test</th><th>Result</th></tr>
                   <tr v-for="(val, key) in hwTestResults">
