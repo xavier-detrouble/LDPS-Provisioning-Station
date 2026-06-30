@@ -81,3 +81,11 @@ ok, garbage binding refused (hub stays locked, nothing written). **Remaining:** 
 write-success E2E run (needs a UAT manufacturer + hub quota = operator-driven via the
 GUI) and swapping the §6.1 transport from LAN HTTP to USB-gadget. Hub side:
 `LDPS-Control-Hub@8b7cce9`.
+
+**UX pass (2026-07-01):** tabs are now `Dashboard · Overview · Provision Node · Provision
+Hub · History` (Setup removed). Login/cloud status lives on Dashboard + nav; the Test Board
+(dongle) connect moved into the Provision Node context (it serves the RF steps), node USB
+port picked per step. **Provision Hub is the same step-wizard as Provision Node** (cpuid →
+product → sign → write → confirm → done). New **Overview** tab = a node/hub step guide. The
+local `provision_log` is now **scoped by `manufacturer_id`** (History + stats per logged-in
+manufacturer; a fresh manufacturer no longer sees another's records).
