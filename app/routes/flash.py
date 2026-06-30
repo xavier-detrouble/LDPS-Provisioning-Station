@@ -21,23 +21,36 @@ def firmware_list(request: Request):
 
 
 @router.post("/start")
-def flash_start(request: Request, data: dict = Body(...)):
+async def flash_start(request: Request, data: dict = Body(...)):
     s = _s(request)
     port = data.get("port", "")
     if not port:
         return JSONResponse({"error": "port required"}, 400)
+    # which node firmware to flash (catalog product key); default the sole node product.
+    product = data.get("product", "LED Node")
+    channel = data.get("channel", "stable")
 
     if not hasattr(s, 'flasher') or s.flasher is None:
         s.flasher = Flasher(ws_manager=s.ws)
-
     if s.flasher.running:
         return JSONResponse({"error": "Flash already in progress"}, 409)
 
-    if not s.flasher.start(port):
+    # #4: the Station is the cloud-facing gateway — version-check the registry and download
+    # the merged factory image ONLY if a newer version exists (the line isn't interrupted by
+    # a download every unit), then flash it at 0x0. The node itself stays offline.
+    cloud_url = getattr(s, "cloud_url", "") or ""
+    if not cloud_url:
+        return JSONResponse({"error": "No Cloud target — log in first"}, 401)
+    from app.firmware_cache import get_latest
+    fw = await get_latest(cloud_url, product, channel)
+    if not fw.get("ok"):
+        return JSONResponse({"error": f"firmware: {fw.get('error')}"}, 502)
+
+    if not s.flasher.start_image(port, fw["path"]):
         return JSONResponse({"error": s.flasher.error or "Failed to start flash"}, 500)
 
-    log(f"[Route] Flash started on {port}")
-    return {"ok": True, "port": port}
+    log(f"[Route] Flash {product} v{fw['version']} (downloaded={fw['changed']}) on {port}")
+    return {"ok": True, "port": port, "version": fw["version"], "downloaded": fw["changed"]}
 
 
 @router.post("/format-sd")

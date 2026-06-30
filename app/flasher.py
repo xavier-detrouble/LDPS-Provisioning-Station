@@ -46,6 +46,53 @@ class Flasher:
         self._thread.start()
         return True
 
+    def start_image(self, port: str, image_path: str) -> bool:
+        """Flash a single MERGED factory image at 0x0 (the cloud-delivered
+        firmware.factory.bin from the firmware registry — see firmware_cache)."""
+        if self.running:
+            return False
+        if not image_path or not os.path.exists(image_path):
+            self.error = f"Missing image: {image_path}"
+            return False
+        self._thread = threading.Thread(target=self._run_image, args=(port, image_path), daemon=True)
+        self._thread.start()
+        return True
+
+    def _run_image(self, port: str, image: str):
+        self.running = True
+        self.progress = 0
+        self.status = "flashing"
+        self.error = ""
+        self._broadcast()
+        old_stdout, old_stderr = sys.stdout, sys.stderr
+        captured = io.StringIO()
+        try:
+            import esptool
+            sys.stdout = captured
+            sys.stderr = captured
+            esptool.main([
+                "--port", port, "--baud", "921600", "--chip", "esp32s3",
+                "write_flash", "0x0", image,
+            ])
+            self.status = "done"
+            self.progress = 100
+        except SystemExit as e:
+            if e.code == 0:
+                self.status = "done"
+                self.progress = 100
+            else:
+                self.status = "error"
+                self.error = captured.getvalue()[-300:]
+        except Exception as e:
+            self.status = "error"
+            self.error = str(e)
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            self.running = False
+            self._broadcast()
+            log(f"[Flash] {self.status}: {self.error or 'OK'}")
+
     def _verify_sha256(self, manifest_path: str, firmware_dir: str) -> bool:
         """Verify firmware files against SHA256 hashes in manifest."""
         try:

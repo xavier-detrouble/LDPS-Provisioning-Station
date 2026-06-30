@@ -190,3 +190,37 @@ async def hub_write_identity(data: dict = Body(...)):
         return JSONResponse({"error": "hub rejected the write", "hub_status": r.status_code, **body}, status)
     log(f"[HubChannel] wrote identity to {HUB_HOST}: hub_uuid={payload['hub_uuid']} → {body.get('provisioned')}")
     return {"ok": True, "hub_host": HUB_HOST, **body}
+
+
+@router.post("/flash-dongle")
+async def hub_flash_dongle(request: Request):
+    """Fetch the latest dongle firmware from the cloud registry (version-check → cache; download
+    only if newer) and push it to the hub over §6.1; the hub flashes the dongle on its USB. The
+    dongle stays offline (the line isn't interrupted by a per-unit download). Product 'RF Bridge'."""
+    s = request.app.state.app_state
+    cloud_url = getattr(s, "cloud_url", "") or ""
+    if not cloud_url:
+        return JSONResponse({"error": "Not logged in to Cloud"}, 401)
+    from app.firmware_cache import get_latest
+    fw = await get_latest(cloud_url, "RF Bridge")
+    if not fw.get("ok"):
+        return JSONResponse({"error": f"dongle firmware: {fw.get('error')}"}, 502)
+    try:
+        with open(fw["path"], "rb") as f:
+            data = f.read()
+    except Exception as e:
+        return JSONResponse({"error": f"cannot read cached firmware: {e}"}, 500)
+    url = f"{HUB_HOST}/api/provision/dongle-firmware"
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            r = await c.post(url, content=data, headers={"Content-Type": "application/octet-stream"})
+    except Exception as e:
+        return JSONResponse({"error": f"cannot reach hub at {HUB_HOST} ({e})"}, 502)
+    try:
+        body = r.json()
+    except Exception:
+        body = {"body": r.text[:200]}
+    if r.status_code != 200:
+        return JSONResponse({"error": "hub rejected the dongle flash", "hub_status": r.status_code, **body}, 502)
+    log(f"[HubChannel] pushed dongle fw v{fw['version']} ({len(data)} bytes, downloaded={fw['changed']}) → {HUB_HOST}")
+    return {"ok": True, "version": fw["version"], "downloaded": fw["changed"], "hub_host": HUB_HOST, **body}
