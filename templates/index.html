@@ -262,9 +262,79 @@
           <button class="btn btn-outline" :disabled="!donglePort" @click="connectDongle">Connect</button>
         </div>
         <div v-if="dongleError" class="text-error text-sm" style="margin-top:6px;">[[ dongleError ]]</div>
-        <div class="text-muted text-sm" style="margin-top:4px;">Needed for the RF steps (discover / hardware test). Click <strong>Detect</strong> and the Station finds the dongle for you. The Node USB port is picked per step below.</div>
+        <div class="text-muted text-sm" style="margin-top:4px;">Needed for the RF steps. Click <strong>Detect</strong> and the Station finds the dongle for you; the node USB port is auto-detected.</div>
       </div>
-      <div class="wizard">
+
+      <!-- ═══ Automated node provisioning (auto-flow) — runs the whole sequence; the operator
+           only confirms the Visual check + handles a failure. Each phase shows live progress +
+           result; results land in provision_log + cloud (node.test_results). ═══ -->
+      <div class="card">
+        <!-- IDLE: Start -->
+        <div v-if="flowState === 'idle'" style="text-align:center;padding:22px 16px;">
+          <div style="font-size:40px;margin-bottom:8px;">&#x1F3ED;</div>
+          <div style="font-weight:700;font-size:16px;margin-bottom:6px;">Automated Node Provisioning</div>
+          <div class="text-muted text-sm" style="max-width:440px;margin:0 auto 16px;">
+            Place the node on the rig (USB + powered) and connect the Test Board above. Press Start —
+            the Station runs <strong>flash → format → discover → hardware test → visual → provision</strong> automatically.
+          </div>
+          <button class="btn btn-primary" style="font-size:16px;padding:12px 34px;" :disabled="!dongleConnected || !cloudReachable" @click="startNodeFlow">&#x25B6; Start</button>
+          <div v-if="!dongleConnected" style="margin-top:8px;color:#fbbf24;font-size:13px;">Connect the Test Board (above) first.</div>
+        </div>
+
+        <!-- RUNNING / VISUAL / FAILED / DONE -->
+        <div v-else>
+          <!-- overall progress -->
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <strong>[[ flowState === 'done' ? 'Provisioned' : (flowState === 'failed' ? 'Paused — needs attention' : (flowState === 'visual' ? 'Visual check' : 'Provisioning…')) ]]</strong>
+            <span class="text-muted text-sm">[[ flowProgress ]]%</span>
+          </div>
+          <div class="progress mb-16"><div class="progress-fill" :style="{width: flowProgress + '%'}"></div></div>
+
+          <!-- phase list (live status + detail) -->
+          <div>
+            <div v-for="ph in nodeFlow" :key="ph.key" style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,0.05);">
+              <span style="width:22px;text-align:center;font-weight:700;font-size:15px;" :style="{color: ph.status==='done'?'#4ade80':(ph.status==='fail'?'#ef4444':(ph.status==='running'?'#60a5fa':'#64748b'))}">[[ ph.status==='done'?'✓':(ph.status==='fail'?'✗':(ph.status==='running'?'⟳':'○')) ]]</span>
+              <span style="min-width:130px;font-weight:600;">[[ ph.name ]]</span>
+              <span class="text-muted text-sm" style="flex:1;">[[ ph.detail ]]</span>
+            </div>
+            <!-- hardware-test detail -->
+            <div v-if="flowResults.hwtest" style="display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 4px 4px 36px;font-size:12px;">
+              <span v-for="(v,k) in flowResults.hwtest" :key="k" :style="{color: v===true?'#4ade80':(v===false?'#ef4444':'#94a3b8')}">[[ k ]]: [[ v ]]</span>
+            </div>
+          </div>
+
+          <!-- VISUAL pause — the only operator input -->
+          <div v-if="flowState === 'visual'" style="margin-top:16px;border:1px solid var(--accent);border-radius:8px;background:rgba(59,130,246,0.07);padding:16px;text-align:center;">
+            <div style="font-size:15px;font-weight:700;margin-bottom:6px;">&#x26A1; The node is lit (IDENTIFY)</div>
+            <div class="text-muted text-sm" style="margin-bottom:14px;">Check the unit: all 8 LED channels light up, and the OLED shows a readable screen.</div>
+            <button class="btn btn-success" @click="visualPass">&#x2713; Looks good</button>
+            <button class="btn btn-danger" style="margin-left:8px;" @click="visualFail">&#x2717; Visual fault</button>
+            <div style="margin-top:10px;"><a href="#" class="text-sm" style="color:var(--muted);" @click.prevent="reIdentify">&#x21BB; light it again</a></div>
+          </div>
+
+          <!-- FAILURE pause -->
+          <div v-if="flowState === 'failed'" style="margin-top:16px;border:1px solid var(--error);border-radius:8px;background:rgba(239,68,68,0.07);padding:14px;">
+            <div class="text-error" style="margin-bottom:10px;">&#x26A0; [[ flowFailMsg ]]</div>
+            <button class="btn btn-primary" @click="retryFlow">&#x21BB; Retry this step</button>
+            <button class="btn btn-outline" style="margin-left:8px;" @click="failNode">Mark node failed</button>
+          </div>
+
+          <!-- DONE -->
+          <div v-if="flowState === 'done'" style="margin-top:16px;text-align:center;">
+            <div style="font-size:48px;">&#x2705;</div>
+            <div style="font-size:18px;font-weight:700;">Node Provisioned</div>
+            <div class="text-muted mb-16">MAC: [[ flowMac ]] — UUID: [[ flowProvision && flowProvision.uuid || '?' ]]</div>
+            <div v-if="flowProvision && flowProvision.recovery_key" style="margin:0 auto 16px;max-width:380px;padding:14px;border:2px solid var(--accent);border-radius:8px;background:rgba(59,130,246,0.08);">
+              <div class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:1px;">Recovery key — print on the box</div>
+              <div style="font-size:26px;font-weight:700;letter-spacing:3px;font-family:monospace;">[[ flowProvision.recovery_key ]]</div>
+            </div>
+            <button class="btn btn-primary" @click="startNodeFlow">Provision Next Node &#x25B6;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- OLD stepped wizard — hidden during cutover (removed once the auto-flow is verified) -->
+      <div class="wizard" v-if="false">
         <div class="wizard-steps">
           <div v-for="(step, i) in wizardSteps" class="wizard-step"
                :class="{active: wizardIdx === i, done: step.status === 'done', fail: step.status === 'fail'}">
@@ -622,6 +692,23 @@ Vue.createApp({
       nodePort: '',
       flashRunning: false,
       provisionProductType: '',  // operator picks a quota bucket (F-build picker); set by loadQuota()
+      // ── Auto-flow (automated node provisioning) ──
+      flowState: 'idle',         // idle | running | visual | failed | done
+      flowProgress: 0,
+      flowFailMsg: '',
+      flowNodePort: '',          // node USB port (auto-resolved: the ESP32-S3 that isn't the dongle)
+      flowMac: '',
+      flowResults: {},           // accumulated test_results → cloud node.test_results + provision_log
+      flowProvision: null,       // {uuid, recovery_key}
+      flowPhaseIdx: 0,
+      nodeFlow: [
+        { key: 'flash',    name: 'Flash firmware', status: 'pending', detail: '' },
+        { key: 'format',   name: 'Format SD',      status: 'pending', detail: '' },
+        { key: 'discover', name: 'Discover node',  status: 'pending', detail: '' },
+        { key: 'hwtest',   name: 'Hardware test',  status: 'pending', detail: '' },
+        { key: 'visual',   name: 'Visual check',   status: 'pending', detail: '' },
+        { key: 'provision',name: 'Provision UUID', status: 'pending', detail: '' },
+      ],
       flashProgress: 0,
       flashStatus: '',
 
@@ -781,6 +868,163 @@ Vue.createApp({
     async disconnectDongle() {
       await axios.post('/api/dongle/disconnect');
       this.dongleConnected = false;
+    },
+
+    // ════════ Automated node provisioning (auto-flow) ════════
+    _flowSleep(ms) { return new Promise(r => setTimeout(r, ms)); },
+    _setPhase(key, status, detail) {
+      const ph = this.nodeFlow.find(p => p.key === key);
+      if (ph) { if (status) ph.status = status; if (detail !== undefined) ph.detail = detail; }
+    },
+    _flowProductKey() {
+      // the node-flow quota bucket; loadQuota() already auto-selects it.
+      if (this.provisionProductType) return this.provisionProductType;
+      const q = (this.nodeQuotas || []).find(x => (x.quota - x.used) > 0) || (this.nodeQuotas || [])[0];
+      return q ? q.product : '';
+    },
+    _resolveNodePort() {
+      // A blank node won't answer 'i', so find it by elimination: the ESP32-S3 USB port
+      // that ISN'T the Test Board (dongle).
+      const isUsb = d => /usbmodem|ttyACM|ttyUSB|wchusbserial|SLAB/.test(d);
+      const cand = (this.serialPorts || []).map(p => p.device).filter(d => isUsb(d) && d !== this.donglePort);
+      if (cand.length === 1) return cand[0];
+      if (cand.length === 0) throw new Error('No node on USB — plug the node in (and connect the Test Board so it can be told apart).');
+      throw new Error('Multiple USB devices (' + cand.join(', ') + ') — unplug extras.');
+    },
+    async startNodeFlow() {
+      this.nodeFlow.forEach(p => { p.status = 'pending'; p.detail = ''; });
+      this.flowResults = {}; this.flowProvision = null; this.flowMac = '';
+      this.flowNodePort = ''; this.flowFailMsg = ''; this.flowProgress = 0;
+      await this._runFlowFrom(0);
+    },
+    async _runFlowFrom(startIdx) {
+      for (this.flowPhaseIdx = startIdx; this.flowPhaseIdx < this.nodeFlow.length; this.flowPhaseIdx++) {
+        const ph = this.nodeFlow[this.flowPhaseIdx];
+        ph.status = 'running';
+        this.flowState = 'running';
+        this.flowProgress = Math.round(this.flowPhaseIdx / this.nodeFlow.length * 100);
+        try {
+          await this._runPhase(ph.key);
+          ph.status = 'done';
+        } catch (e) {
+          ph.status = 'fail';
+          this.flowFailMsg = (e && e.message) ? e.message : String(e);
+          this.flowState = 'failed';
+          return;
+        }
+      }
+      this.flowProgress = 100;
+      this.flowState = 'done';
+      if (this.cloudConnected) this.loadQuota();
+    },
+    retryFlow() {
+      const ph = this.nodeFlow[this.flowPhaseIdx];
+      if (ph) { ph.status = 'pending'; ph.detail = ''; }
+      this.flowFailMsg = '';
+      this._runFlowFrom(this.flowPhaseIdx);
+    },
+    async failNode() {
+      try {
+        await axios.post('/api/provision/report-fail/' + (this.flowMac || 'UNKNOWN'), {
+          reason: this.flowFailMsg || 'QC failed', test_results: this.flowResults,
+          product: this._flowProductKey(), firmware_ver: this.flowResults.flash || '',
+        });
+      } catch (e) { /* yield record best-effort */ }
+      this.flowState = 'idle';
+      this.nodeFlow.forEach(p => { p.status = 'pending'; p.detail = ''; });
+    },
+    _runPhase(key) {
+      if (key === 'flash')     return this._phaseFlash();
+      if (key === 'format')    return this._phaseFormat();
+      if (key === 'discover')  return this._phaseDiscover();
+      if (key === 'hwtest')    return this._phaseHwTest();
+      if (key === 'visual')    return this._phaseVisual();
+      if (key === 'provision') return this._phaseProvision();
+      return Promise.resolve();
+    },
+    async _phaseFlash() {
+      await this.refreshPorts();
+      this.flowNodePort = this._resolveNodePort();
+      this._setPhase('flash', 'running', 'Flashing ' + this.flowNodePort + ' …');
+      await axios.post('/api/flash/start', { port: this.flowNodePort });
+      for (;;) {
+        await this._flowSleep(1200);
+        const st = (await axios.get('/api/flash/status')).data;
+        if (st.status === 'flashing') this._setPhase('flash', 'running', 'Flashing… ' + (st.progress || 0) + '%');
+        else if (st.status === 'done') { this._setPhase('flash', 'done', 'flashed'); this.flowResults.flash = 'ok'; return; }
+        else if (st.status === 'error') throw new Error('Flash failed: ' + (st.error || '').slice(0, 140));
+        else if (st.status === 'idle') throw new Error('Flash did not start (is the node in download mode?)');
+      }
+    },
+    async _phaseFormat() {
+      this._setPhase('format', 'running', 'Waiting for node reboot…');
+      await this._flowSleep(8000);   // node boots + mounts SD after the flash hard-reset
+      this._setPhase('format', 'running', 'Formatting SD (FAT32)…');
+      try {
+        await axios.post('/api/flash/format-sd', { port: this.flowNodePort });
+        this.flowResults.format = 'FAT32';
+        this._setPhase('format', 'done', 'FAT32');
+      } catch (e) {
+        this.flowResults.format = 'fail';
+        throw new Error('SD format failed: ' + (e.response?.data?.error || e.message));
+      }
+    },
+    async _phaseDiscover() {
+      this._setPhase('discover', 'running', 'Reading node identity (USB)…');
+      const r = await axios.post('/api/provision/read-node', { port: this.flowNodePort });
+      const mac = (r.data && r.data.mac) ? r.data.mac.toUpperCase() : '';
+      if (!mac) throw new Error('Node not responding after flash — check USB cable/power.');
+      if (r.data.uuid) throw new Error('Node already provisioned (UUID ' + r.data.uuid + '). Clear it first (Re-provision).');
+      this.flowMac = mac;
+      this.flowResults.flash = r.data.fw || this.flowResults.flash || 'ok';
+      this._setPhase('discover', 'done', mac + ' · fw ' + (r.data.fw || '?'));
+    },
+    async _phaseHwTest() {
+      if (!this.dongleConnected) throw new Error('Test Board not connected — connect it (above) and retry.');
+      this._setPhase('hwtest', 'running', 'Self-check over RF…');
+      let res;
+      try {
+        const r = await axios.post('/api/provision/hw-test/' + this.flowMac);
+        res = r.data.test_results;
+      } catch (e) {
+        throw new Error('Hardware test couldn\'t run: ' + (e.response?.data?.error || e.message) + ' — check the Test Board + node, then retry.');
+      }
+      this.flowResults.hwtest = res;
+      const pass = res && res.sd === true && res.rf === true && res.nvs === true && res.led === true;
+      if (!pass) throw new Error('Hardware test failed — see the per-test results above.');
+      this._setPhase('hwtest', 'done', 'all checks passed');
+    },
+    async _phaseVisual() {
+      await axios.post('/api/provision/identify/' + this.flowMac).catch(() => {});
+      this._setPhase('visual', 'running', 'Node lit — operator confirming…');
+      this.flowState = 'visual';
+      await new Promise((resolve, reject) => { this._visualResolve = resolve; this._visualReject = reject; });
+      this.flowResults.visual = 'pass';
+      this._setPhase('visual', 'done', 'operator confirmed');
+    },
+    visualPass() {
+      const r = this._visualResolve; this._visualResolve = this._visualReject = null; if (r) r();
+    },
+    visualFail() {
+      const r = this._visualReject; this._visualResolve = this._visualReject = null;
+      if (r) r(new Error('Visual check failed (LEDs/OLED not correct)'));
+    },
+    reIdentify() { if (this.flowMac) axios.post('/api/provision/identify/' + this.flowMac).catch(() => {}); },
+    async _phaseProvision() {
+      const product = this._flowProductKey();
+      if (!product) throw new Error('No node quota bucket available — check the manufacturer quota.');
+      this._setPhase('provision', 'running', 'Minting UUID + writing over USB…');
+      let r;
+      try {
+        r = await axios.post('/api/provision/finalize/' + this.flowMac, {
+          port: this.flowNodePort, product: product,
+          test_results: this.flowResults, firmware_ver: this.flowResults.flash || '',
+        });
+      } catch (e) {
+        throw new Error('Provision failed: ' + (e.response?.data?.error || e.message));
+      }
+      this.flowProvision = { uuid: r.data.uuid, recovery_key: r.data.recovery_key };
+      this._setPhase('provision', 'done', r.data.uuid);
     },
 
     // ── Cloud ──
