@@ -245,16 +245,24 @@
         <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap;">
           <span class="text-sm text-muted" style="white-space:nowrap;">Test Board (dongle):</span>
           <span><span class="status-dot" :class="dongleConnected ? 'on' : 'off'"></span>[[ dongleConnected ? donglePort : 'not connected' ]]</span>
-          <select v-if="!dongleConnected" class="input" v-model="donglePort" style="flex:1;min-width:150px;">
+          <!-- Auto-detect is the primary path — the operator shouldn't have to know which port is the dongle. -->
+          <button v-if="!dongleConnected" class="btn btn-primary" :disabled="dongleDetecting" @click="detectDongle">
+            [[ dongleDetecting ? 'Detecting…' : '🔍 Detect Test Board' ]]
+          </button>
+          <button v-else class="btn btn-outline" @click="disconnectDongle">Disconnect</button>
+        </div>
+        <!-- Manual fallback (only if auto-detect can't find it) -->
+        <div v-if="!dongleConnected" class="row" style="align-items:center;gap:6px;margin-top:8px;">
+          <span class="text-muted" style="font-size:11px;white-space:nowrap;">…or pick manually:</span>
+          <select class="input" v-model="donglePort" style="flex:1;min-width:140px;font-size:12px;">
             <option value="">Select port…</option>
             <option v-for="p in serialPorts" :value="p.device">[[ p.device ]] — [[ p.description ]]</option>
           </select>
-          <button v-if="!dongleConnected" class="btn btn-outline" @click="refreshPorts" title="Refresh ports">&#x21bb;</button>
-          <button v-if="!dongleConnected" class="btn btn-primary" :disabled="!donglePort" @click="connectDongle">Connect</button>
-          <button v-else class="btn btn-outline" @click="disconnectDongle">Disconnect</button>
+          <button class="btn btn-outline" @click="refreshPorts" title="Refresh ports">&#x21bb;</button>
+          <button class="btn btn-outline" :disabled="!donglePort" @click="connectDongle">Connect</button>
         </div>
         <div v-if="dongleError" class="text-error text-sm" style="margin-top:6px;">[[ dongleError ]]</div>
-        <div class="text-muted text-sm" style="margin-top:4px;">Needed for the RF steps (discover / hardware test / playback). The Node USB port is picked per step below.</div>
+        <div class="text-muted text-sm" style="margin-top:4px;">Needed for the RF steps (discover / hardware test). Click <strong>Detect</strong> and the Station finds the dongle for you. The Node USB port is picked per step below.</div>
       </div>
       <div class="wizard">
         <div class="wizard-steps">
@@ -595,6 +603,7 @@ Vue.createApp({
       // Dongle / Test Board
       donglePort: '',
       dongleConnected: false,
+      dongleDetecting: false,
       dongleError: '',
 
       // Cloud (manufacturer API key)
@@ -712,6 +721,12 @@ Vue.createApp({
     tab(val) {
       if (val === 'dashboard') { this.loadDbStats(); if (this.cloudConnected) this.loadQuota(); }
       if (val === 'provision' && this.cloudConnected) this.loadQuota();
+      // Entering the node flow: auto-detect the Test Board once so the operator
+      // doesn't have to pick a port (the RF steps need it). Manual fallback stays.
+      if (val === 'provision' && !this.dongleConnected && !this._dongleAutoTried) {
+        this._dongleAutoTried = true;
+        this.detectDongle();
+      }
       if (val === 'hub' && this.cloudConnected) this.loadQuota();
       if (val === 'history') this.loadHistory();
     },
@@ -745,6 +760,22 @@ Vue.createApp({
         else this.dongleError = r.data.error || 'connect failed';
       } catch (e) {
         this.dongleError = 'Connect failed: ' + (e.response?.data?.error || e.message);
+      }
+    },
+    // Auto-detect + connect the Test Board so the operator never has to know which
+    // /dev/cu.* the dongle is — the Station probes the ports and finds it.
+    async detectDongle() {
+      if (this.dongleDetecting || this.dongleConnected) return;
+      this.dongleDetecting = true;
+      this.dongleError = '';
+      try {
+        const r = await axios.post('/api/dongle/detect');
+        if (r.data.ok) { this.dongleConnected = true; this.donglePort = r.data.port; }
+        else this.dongleError = r.data.error || 'no Test Board found';
+      } catch (e) {
+        this.dongleError = (e.response?.data?.error || e.message) + '';
+      } finally {
+        this.dongleDetecting = false;
       }
     },
     async disconnectDongle() {
