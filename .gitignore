@@ -6,3 +6,6 @@ test_report_*.json
 # Persisted manufacturer session (holds the API key — never commit)
 static/mfr_session.json
 mfr_session.json
+
+# firmware download cache (Station pulls latest from cloud; not source)
+static/firmware_cache/
