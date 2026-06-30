@@ -7,6 +7,7 @@
   <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
   <style>
     :root {
       --bg: #0f1117;
@@ -331,9 +332,24 @@
             <div style="font-size:48px;">&#x2705;</div>
             <div style="font-size:18px;font-weight:700;">Node Provisioned</div>
             <div class="text-muted mb-16">MAC: [[ flowMac ]] — UUID: [[ flowProvision && flowProvision.uuid || '?' ]]</div>
-            <div v-if="flowProvision && flowProvision.recovery_key" style="margin:0 auto 16px;max-width:380px;padding:14px;border:2px solid var(--accent);border-radius:8px;background:rgba(59,130,246,0.08);">
-              <div class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:1px;">Recovery key — print on the box</div>
-              <div style="font-size:26px;font-weight:700;letter-spacing:3px;font-family:monospace;">[[ flowProvision.recovery_key ]]</div>
+            <!-- Label / sticker preview — printed + stuck on the box at end of provision (the printer
+                 isn't wired yet; this is the layout + content for review). The QR → the public verify page. -->
+            <div v-if="flowProvision" style="margin:0 auto 14px;max-width:400px;">
+              <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;text-align:left;">Label preview — print &amp; stick on the box</div>
+              <div style="display:flex;gap:14px;align-items:center;background:#fff;color:#0b0f17;border-radius:10px;padding:14px 16px;box-shadow:0 6px 24px rgba(0,0,0,0.4);">
+                <div style="width:100px;height:100px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+                  <img v-if="flowProvision.qr" :src="flowProvision.qr" style="width:100px;height:100px;" alt="verify QR">
+                  <span v-else style="font-size:10px;color:#94a3b8;">QR…</span>
+                </div>
+                <div style="text-align:left;flex:1;min-width:0;">
+                  <div style="font-weight:800;font-size:15px;">LDPS · [[ provisionProductType || 'LED Node' ]]</div>
+                  <div style="font-size:10px;color:#64748b;margin-top:8px;text-transform:uppercase;letter-spacing:.5px;">Device UUID</div>
+                  <div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;color:#0f172a;">[[ flowProvision.uuid ]]</div>
+                  <div style="font-size:10px;color:#64748b;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;">Recovery key</div>
+                  <div style="font-family:ui-monospace,monospace;font-size:15px;font-weight:700;letter-spacing:1px;color:#0f172a;">[[ flowProvision.recovery_key ]]</div>
+                </div>
+              </div>
+              <div class="text-muted" style="font-size:11px;margin-top:6px;text-align:left;">Scan the QR → public genuineness page: <span style="font-family:monospace;">[[ flowProvision.verifyUrl ]]</span></div>
             </div>
             <button class="btn btn-primary" @click="nextNode">Provision Next Node &#x25B6;</button>
           </div>
@@ -1095,7 +1111,23 @@ Vue.createApp({
         throw new Error('Provision failed: ' + (e.response?.data?.error || e.message));
       }
       this.flowProvision = { uuid: r.data.uuid, recovery_key: r.data.recovery_key };
+      this._makeStickerQR();
       this._setPhase('provision', 'done', r.data.uuid);
+    },
+    // Build the box-label QR (→ public verify page) for the sticker preview on the Done screen.
+    _makeStickerQR() {
+      const fp = this.flowProvision;
+      if (!fp || !fp.uuid) return;
+      const url = (this.cloudUrl || '').replace(/\/$/, '') + '/verify/' + fp.uuid;
+      let qr = null;
+      try {
+        if (window.qrcode) {
+          const q = window.qrcode(0, 'M');   // type auto, error-correction M
+          q.addData(url); q.make();
+          qr = q.createDataURL(5, 8);        // cellSize, margin → data: URL
+        }
+      } catch (e) { qr = null; }
+      this.flowProvision = Object.assign({}, fp, { verifyUrl: url, qr: qr });
     },
 
     // ── Cloud ──
