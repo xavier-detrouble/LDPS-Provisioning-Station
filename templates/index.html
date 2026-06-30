@@ -846,8 +846,10 @@ Vue.createApp({
     async wizardPostFlash() {
       this.wizardBusy = true;
       this.formatStatus = 'Node rebooting — waiting for SD to mount...';
-      // esptool reset → node boots + mounts SD; give it a few seconds.
-      await new Promise(r => setTimeout(r, 4000));
+      // esptool `--after hard_reset` resets the node → its USB-CDC port re-enumerates
+      // (gone for several seconds). Wait out most of it; node_serial._open() then retries
+      // through the rest, so the format no longer fails with a stale-handle errno 19.
+      await new Promise(r => setTimeout(r, 8000));
       this.formatStatus = 'Formatting SD card (FAT32)...';
       try {
         const r = await axios.post('/api/flash/format-sd', { port: this.nodePort });

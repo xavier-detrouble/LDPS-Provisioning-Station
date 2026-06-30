@@ -19,10 +19,26 @@ from app.utils import log
 BAUD = 115200
 
 
+def _open(port: str, retries: int = 12, delay: float = 0.8) -> "serial.Serial":
+    """Open the node serial port, retrying through the USB-CDC re-enumeration window.
+    After an esptool flash the ESP32-S3 hard-resets (`--after hard_reset`) and its
+    native USB-CDC port disappears for several seconds; a stale handle raises
+    errno 19 ('Operation not supported by device') / SerialException. We retry for
+    ~10s so the post-flash `format_sd` (and `read_identity`) don't spuriously fail."""
+    last = None
+    for _ in range(max(1, retries)):
+        try:
+            return serial.Serial(port, BAUD, timeout=0.3)
+        except (serial.SerialException, OSError) as e:
+            last = e
+            time.sleep(delay)
+    raise last if last is not None else serial.SerialException(f"cannot open {port}")
+
+
 def _txn(port: str, send: str | None, wait: float = 1.6) -> str:
     """Open `port`, optionally write a line, read for `wait` seconds, return text.
     Reads past the node's interleaved periodic logs by accumulating the window."""
-    with serial.Serial(port, BAUD, timeout=0.3) as s:
+    with _open(port) as s:
         time.sleep(0.4)
         s.reset_input_buffer()
         if send is not None:
