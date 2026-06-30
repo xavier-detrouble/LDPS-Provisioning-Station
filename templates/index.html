@@ -350,49 +350,9 @@
               </div>
             </div>
 
-            <!-- Step 3: Sync Test Pack -->
+            <!-- Step 3: Visual Check — simplified production test: node self-check (step 2,
+                 incl. RF) + visual only; the test-pad Sync/Playback capture is removed. -->
             <div v-if="wizardIdx === 3" style="padding:16px 0;">
-              <div class="mb-8 text-muted">Node: [[ selectedMac ]]</div>
-              <button class="btn btn-primary mb-16" :disabled="wizardBusy" @click="wizardSync">
-                [[ wizardBusy ? 'Syncing...' : 'Sync Test Pack' ]]
-              </button>
-              <div v-if="syncStatus" class="mb-8">[[ syncStatus ]]</div>
-              <div v-if="syncDone" style="margin-top:12px;">
-                <button class="btn btn-success" @click="wizardAdvance">Sync Complete — Continue</button>
-              </div>
-            </div>
-
-            <!-- Step 4: Playback Test (via LDPS-Probe) -->
-            <div v-if="wizardIdx === 4" style="padding:16px 0;">
-              <div class="mb-8 text-muted">Node: [[ selectedMac ]]</div>
-              <div class="row mb-16">
-                <button class="btn btn-primary" :disabled="wizardBusy" @click="wizardPlaybackTest">
-                  [[ wizardBusy ? 'Testing...' : 'Run Playback Test' ]]
-                </button>
-                <button class="btn btn-outline" @click="wizardAdvance">Skip</button>
-              </div>
-              <div v-if="playbackStatus" class="mb-8 text-sm text-muted">[[ playbackStatus ]]</div>
-              <div v-if="playbackResults">
-                <table class="table">
-                  <tr><th>CH</th><th>Frames</th><th>FPS</th><th>Timing</th><th>Drops</th><th>Result</th></tr>
-                  <tr v-for="t in playbackResults">
-                    <td>[[ t.channel ]]</td>
-                    <td>[[ t.frames ]]</td>
-                    <td>[[ t.fps ]]</td>
-                    <td :class="t.timing_ok ? 'text-success' : 'text-error'">[[ t.timing_ok ? 'OK' : 'FAIL' ]]</td>
-                    <td>[[ t.drops ]]</td>
-                    <td :class="t.pass ? 'text-success' : 'text-error'">[[ t.pass ? 'PASS' : 'FAIL' ]]</td>
-                  </tr>
-                </table>
-                <div style="margin-top:12px;">
-                  <button v-if="playbackPass" class="btn btn-success" @click="wizardAdvance">Playback Test Passed</button>
-                  <button v-else class="btn btn-danger" @click="wizardFail('Playback test failed')">Test Failed</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Step 5: Visual Check -->
-            <div v-if="wizardIdx === 5" style="padding:16px 0;">
               <div class="mb-16">
                 <div class="mb-8">Is the OLED display showing correctly?</div>
                 <div class="row mb-16">
@@ -411,8 +371,8 @@
               </div>
             </div>
 
-            <!-- Step 6: Provision UUID -->
-            <div v-if="wizardIdx === 6" style="padding:16px 0;">
+            <!-- Step 4: Provision UUID -->
+            <div v-if="wizardIdx === 4" style="padding:16px 0;">
               <div class="mb-8 text-muted">Node: [[ selectedMac ]]</div>
               <!-- Product type = the quota bucket to provision against (F-build operator picker;
                    no hardcoded value). Options are THIS manufacturer's quota buckets. -->
@@ -455,8 +415,8 @@
               </div>
             </div>
 
-            <!-- Step 7: Done -->
-            <div v-if="wizardIdx === 7" style="padding:16px 0;text-align:center;">
+            <!-- Step 5: Done -->
+            <div v-if="wizardIdx === 5" style="padding:16px 0;text-align:center;">
               <div style="font-size:64px;margin-bottom:16px;">&#x2705;</div>
               <div style="font-size:20px;font-weight:700;margin-bottom:8px;">Node Provisioned Successfully</div>
               <div class="text-muted mb-16">MAC: [[ selectedMac ]] — UUID: [[ provisionResult?.uuid || '?' ]]</div>
@@ -649,8 +609,6 @@ Vue.createApp({
         { name: 'Flash Firmware', status: 'pending' },
         { name: 'Discover Node', status: 'pending' },
         { name: 'Hardware Test', status: 'pending' },
-        { name: 'Sync Test Pack', status: 'pending' },
-        { name: 'Playback Test', status: 'pending' },
         { name: 'Visual Check', status: 'pending' },
         { name: 'Provision UUID', status: 'pending' },
         { name: 'Done', status: 'pending' },
@@ -704,9 +662,7 @@ Vue.createApp({
       nodeGuide: [
         { name: 'Flash Firmware', desc: 'Flash the node firmware over USB, then format its SD card.' },
         { name: 'Discover Node', desc: 'Auto-detect over USB, or scan over RF, then pick the unit.' },
-        { name: 'Hardware Test', desc: 'Run the on-board self-test (SD, RF, NVS, LED) over RF.' },
-        { name: 'Sync Test Pack', desc: 'Push a test pack so the node can run a playback check.' },
-        { name: 'Playback Test', desc: 'Capture the WS2812 output per channel; verify FPS / timing.' },
+        { name: 'Hardware Test', desc: 'On-board self-check (SD, NVS, LED) + RF check, over RF via the Test Board.' },
         { name: 'Visual Check', desc: 'Operator confirms the OLED + LED channels look correct.' },
         { name: 'Provision UUID', desc: 'Pick a quota bucket; Cloud mints + signs the UUID, written over USB.' },
         { name: 'Done', desc: 'Print the recovery key on the box; start the next unit.' },
