@@ -89,3 +89,12 @@ port picked per step. **Provision Hub is the same step-wizard as Provision Node*
 product → sign → write → confirm → done). New **Overview** tab = a node/hub step guide. The
 local `provision_log` is now **scoped by `manufacturer_id`** (History + stats per logged-in
 manufacturer; a fresh manufacturer no longer sees another's records).
+
+**Commit model (2026-07-01):** the Station is the factory authority — **no manual confirm
+button**. It writes the identity to the hub (§6.1) / node (USB) and on the device's read-back
+success **auto-confirms** to Cloud (commit is server-side idempotent → retry-safe). If the
+write/read-back fails the operator gets **Release & start over** (free the quota slot, delete
+the reservation) or **Mark defective** (status `defected` → keeps the row + counts the quota
+slot for yield/RMA; the manufacturer requests more quota from us with cause). Abandoned
+`reserved` rows are reaped server-side after the stale window. Hub routes `/api/hub/{defect}`,
+node `/api/provision/defect`; cloud `defect_provision_{hub,node}` RPC + widened lifecycle CHECK.

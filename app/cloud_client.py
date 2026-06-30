@@ -96,6 +96,17 @@ class CloudClient:
         except Exception:
             return False
 
+    async def defect(self, uuid: str, reason: str = "") -> bool:
+        """Mark a reserved/provisioned node 'defected' (keeps row + quota for yield tracking)."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(f"{self.cloud_url}/provision/node/defect",
+                                      json={"uuid": uuid, "reason": reason or None},
+                                      headers=self._headers())
+            return r.status_code == 200
+        except Exception:
+            return False
+
     async def report_test_fail(self, hardware_serial: str,
                                test_results: dict = None, reason: str = "") -> bool:
         try:
@@ -154,6 +165,17 @@ class CloudClient:
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.post(f"{self.cloud_url}/provision/hub/confirm",
                                       json={"hub_uuid": hub_uuid, "success": success},
+                                      headers=self._headers())
+            return r.status_code == 200
+        except Exception:
+            return False
+
+    async def defect_hub(self, hub_uuid: str, reason: str = "") -> bool:
+        """Mark a reserved/provisioned hub 'defected' (keeps row + quota for yield tracking)."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post(f"{self.cloud_url}/provision/hub/defect",
+                                      json={"hub_uuid": hub_uuid, "reason": reason or None},
                                       headers=self._headers())
             return r.status_code == 200
         except Exception:

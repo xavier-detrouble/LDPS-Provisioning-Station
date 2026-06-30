@@ -251,6 +251,24 @@ async def report_fail(request: Request, mac: str, data: dict = Body(default={}))
     return {"ok": True, "failed": s.stats_failed}
 
 
+@router.post("/defect")
+async def node_defect(request: Request, data: dict = Body(default={})):
+    """Mark a reserved/provisioned node 'defected' (keeps the row + quota slot for yield/
+    RMA tracking). Use when a unit that ALREADY got a UUID is found defective — distinct
+    from report-fail (a pre-UUID QC reject with no quota burn)."""
+    s = _s(request)
+    if not getattr(s, "cloud_client", None):
+        return {"ok": False, "error": "Not logged in to Cloud"}
+    uuid = data.get("uuid")
+    if not uuid:
+        return {"ok": False, "error": "uuid required"}
+    ok = await s.cloud_client.defect(uuid, reason=data.get("reason", "marked defective"))
+    if ok and s.ws:
+        s.stats_failed += 1
+        s.ws.broadcast("stats", {"provisioned": s.stats_provisioned, "failed": s.stats_failed})
+    return {"ok": ok}
+
+
 # ── Playback Test (LDPS-Probe) ───────────────────────
 
 # Pending capture result tracker

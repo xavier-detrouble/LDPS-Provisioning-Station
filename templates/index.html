@@ -440,6 +440,9 @@
                     <div class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:1px;">Recovery key — print on the box (shown once)</div>
                     <div style="font-size:22px;font-weight:700;letter-spacing:2px;font-family:monospace;">[[ provisionResult.recovery_key ]]</div>
                   </div>
+                  <div style="margin-top:12px;">
+                    <button class="btn btn-outline" :disabled="wizardBusy" @click="nodeDefect" title="Found defective after provisioning — keeps the record + quota for tracking">Mark defective</button>
+                  </div>
                 </div>
                 <div v-else class="text-error">
                   [[ provisionResult.error ]]
@@ -537,29 +540,22 @@
                 </div>
                 <div class="text-muted text-sm" style="margin-bottom:8px;">
                   Write <code>hub_boot_identity.json</code> to the hub SD over the §6.1 channel
-                  (<code>[[ hubHost || 'hub' ]]</code>). The hub re-verifies against its own chip, then unlocks.
+                  (<code>[[ hubHost || 'hub' ]]</code>). The hub re-verifies against its own chip + writes;
+                  on that read-back success the Station <strong>auto-confirms</strong> to Cloud — no manual step.
                 </div>
-                <button v-if="!hubWritten" class="btn btn-primary" :disabled="hubBusy" @click="hubWriteToHub">
-                  [[ hubBusy ? 'Writing…' : 'Write to Hub (§6.1)' ]]</button>
-                <div v-else class="text-success text-sm" style="font-weight:600;">
-                  ✓ Written — hub unlocked. Restart the hub so it registers + heartbeats, then Confirm.
-                </div>
+                <button class="btn btn-primary" :disabled="hubBusy" @click="hubWriteToHub">
+                  [[ hubBusy ? 'Writing & confirming…' : (hubError ? 'Retry write' : 'Write to Hub (§6.1) & confirm') ]]</button>
                 <div v-if="hubError" class="text-error text-sm mt-8">[[ hubError ]]</div>
               </div>
-            </div>
-
-            <!-- Step 4: Confirm / Release -->
-            <div v-if="hubIdx === 4" style="padding:16px 0;">
-              <div class="mb-16 text-muted text-sm">QC the unlocked hub. <strong>Confirm</strong> burns the quota; <strong>Release</strong> frees it.</div>
-              <div class="row">
-                <button class="btn btn-success" :disabled="hubBusy || !cloudReachable" @click="hubConfirm(true)">Confirm (written + QC ok)</button>
-                <button class="btn btn-danger" :disabled="hubBusy" @click="hubConfirm(false)">Release (cancel — free quota)</button>
+              <!-- recovery exits — a reservation (hub_uuid + quota) exists at this point -->
+              <div class="row" style="margin-top:12px;gap:8px;">
+                <button class="btn btn-outline" :disabled="hubBusy" @click="hubRelease" title="Free the quota slot + start over">Release &amp; start over</button>
+                <button class="btn btn-danger" :disabled="hubBusy" @click="hubDefect" title="Mark this unit defective — keeps the record + quota for tracking">Mark defective</button>
               </div>
-              <div v-if="hubError" class="text-error text-sm mt-8">[[ hubError ]]</div>
             </div>
 
-            <!-- Step 5: Done -->
-            <div v-if="hubIdx === 5" style="padding:16px 0;text-align:center;">
+            <!-- Step 4: Done -->
+            <div v-if="hubIdx === 4" style="padding:16px 0;text-align:center;">
               <div style="font-size:64px;margin-bottom:16px;">&#x2705;</div>
               <div style="font-size:20px;font-weight:700;margin-bottom:8px;">Hub Provisioned</div>
               <div class="text-muted mb-16" style="font-family:monospace;">[[ hubDoneUuid ]]</div>
@@ -688,8 +684,7 @@ Vue.createApp({
         { name: 'Read cpuid', status: 'pending' },
         { name: 'Select product', status: 'pending' },
         { name: 'Sign binding', status: 'pending' },
-        { name: 'Write to hub', status: 'pending' },
-        { name: 'Confirm', status: 'pending' },
+        { name: 'Write & confirm', status: 'pending' },
         { name: 'Done', status: 'pending' },
       ],
       hubCpuid: '',
@@ -720,9 +715,8 @@ Vue.createApp({
         { name: 'Read cpuid', desc: "Read the assembled OPi's chip id over the §6.1 channel, or type it." },
         { name: 'Select product', desc: 'Choose the hub quota bucket to provision against.' },
         { name: 'Sign binding', desc: 'Cloud mints hub_uuid + signs the binding to the cpuid.' },
-        { name: 'Write to hub', desc: 'Write the signed identity to the hub SD over §6.1; the hub re-verifies + unlocks.' },
-        { name: 'Confirm', desc: 'QC the unlocked hub, then Confirm (burns quota) or Release (frees it).' },
-        { name: 'Done', desc: 'Hub registered; start the next hub.' },
+        { name: 'Write & confirm', desc: 'Write the signed identity to the hub SD over §6.1; the hub re-verifies + unlocks, and the Station auto-confirms to Cloud on read-back success.' },
+        { name: 'Done', desc: 'Hub registered; start the next hub. (Release / Mark-defective exits are available if the write fails.)' },
       ],
     };
   },
@@ -1020,6 +1014,15 @@ Vue.createApp({
       this.wizardBusy = false;
       await this.wizardFinalize();   // node is blank now → re-attempt
     },
+    async nodeDefect() {
+      // found defective after the node got a UUID — keep the row + quota for tracking, start over
+      if (!this.provisionResult?.uuid) return;
+      this.wizardBusy = true;
+      try { await axios.post('/api/provision/defect', { uuid: this.provisionResult.uuid, reason: 'marked defective at provisioning' }); this.loadQuota(); }
+      catch (e) { /* resetting regardless */ }
+      this.wizardBusy = false;
+      this.wizardReset();
+    },
     async wizardFinalize() {
       this.wizardBusy = true;
       this.provisionResult = null;
@@ -1082,7 +1085,8 @@ Vue.createApp({
       this.hubBusy = false;
     },
     async hubWriteToHub() {
-      // §6.1: write the cloud-signed binding onto the OPi's SD; the hub re-verifies + unlocks.
+      // §6.1: write the cloud-signed binding onto the OPi's SD; the hub re-verifies its own
+      // chip + writes (read-back). On that success the Station AUTO-CONFIRMS to Cloud.
       if (!this.hubResult) return;
       this.hubBusy = true; this.hubError = '';
       try {
@@ -1093,23 +1097,45 @@ Vue.createApp({
           key_id: this.hubResult.key_id,
           signing_keys: this.hubResult.signing_keys,
         });
-        if (r.data && r.data.ok && r.data.provisioned) { this.hubWritten = true; this.hubAdvance(); }
-        else this.hubError = (r.data && r.data.error) || 'write failed';
+        if (r.data && r.data.ok && r.data.provisioned) {
+          this.hubWritten = true;
+          await this.hubConfirm();   // read-back verified → auto-confirm, no manual step
+        } else this.hubError = (r.data && r.data.error) || 'write failed';
       } catch (e) { this.hubError = e.response?.data?.error || e.message; }
       this.hubBusy = false;
     },
-    async hubConfirm(success) {
+    async hubConfirm() {
+      // commit (reserved → provisioned). Server-side idempotent, so a retried write is safe.
       if (!this.hubResult) return;
+      try {
+        const r = await axios.post('/api/hub/confirm', { hub_uuid: this.hubResult.hub_uuid, success: true });
+        if (r.data && r.data.ok) {
+          this.hubDoneUuid = this.hubResult.hub_uuid; this.hubDone = true; this.hubAdvance();
+          this.loadQuota();
+        } else { this.hubError = (r.data && r.data.error) || 'confirm failed — retry write'; }
+      } catch (e) { this.hubError = e.response?.data?.error || e.message; }
+    },
+    async hubRelease() {
+      // operator abort: free the quota slot + delete the reservation, then start over
+      if (this.hubResult) {
+        this.hubBusy = true; this.hubError = '';
+        try { await axios.post('/api/hub/confirm', { hub_uuid: this.hubResult.hub_uuid, success: false }); this.loadQuota(); }
+        catch (e) { /* resetting regardless */ }
+        this.hubBusy = false;
+      }
+      this.hubReset();
+    },
+    async hubDefect() {
+      // mark this unit defective — keeps the row + quota slot for yield tracking, then start over
+      if (!this.hubResult) { this.hubReset(); return; }
       this.hubBusy = true; this.hubError = '';
       try {
-        const r = await axios.post('/api/hub/confirm', { hub_uuid: this.hubResult.hub_uuid, success });
-        if (r.data && r.data.ok) {
-          if (success) { this.hubDoneUuid = this.hubResult.hub_uuid; this.hubDone = true; this.hubAdvance(); }
-          else { this.hubReset(); }
-          this.loadQuota();   // refresh remaining quota
-        } else { this.hubError = 'confirm failed'; }
-      } catch (e) { this.hubError = e.response?.data?.error || e.message; }
+        const r = await axios.post('/api/hub/defect', { hub_uuid: this.hubResult.hub_uuid, reason: 'write/verify failed at provisioning' });
+        if (!(r.data && r.data.ok)) { this.hubError = 'defect failed'; this.hubBusy = false; return; }
+        this.loadQuota();
+      } catch (e) { this.hubError = e.response?.data?.error || e.message; this.hubBusy = false; return; }
       this.hubBusy = false;
+      this.hubReset();
     },
     hubReset() {
       this.hubIdx = 0;

@@ -89,6 +89,25 @@ async def hub_confirm(request: Request, data: dict = Body(...)):
     return {"ok": ok}
 
 
+@router.post("/defect")
+async def hub_defect(request: Request, data: dict = Body(...)):
+    """Mark a reserved/provisioned hub 'defected' (keeps row + quota for yield tracking)."""
+    s = _s(request)
+    if not _need_cloud(s):
+        return JSONResponse({"error": "Not logged in to Cloud"}, 401)
+    hub_uuid = data.get("hub_uuid")
+    if not hub_uuid:
+        return JSONResponse({"error": "hub_uuid required"}, 400)
+    ok = await s.cloud_client.defect_hub(hub_uuid, reason=data.get("reason", ""))
+    if ok:
+        s.stats_failed += 1
+        s.hub_pending = None
+        if s.ws:
+            s.ws.broadcast("stats", {"provisioned": s.stats_provisioned, "failed": s.stats_failed})
+        log(f"[HubProvision] DEFECT hub_uuid={hub_uuid}")
+    return {"ok": ok}
+
+
 @router.post("/rebind")
 async def hub_rebind(request: Request, data: dict = Body(...)):
     """RMA board swap: re-sign the binding to a NEW cpuid (same hub_uuid + owner)."""
