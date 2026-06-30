@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS provision_logs (
     error_reason TEXT,
     batch TEXT,
     cloud_confirmed INTEGER DEFAULT 0,
-    recovery_key TEXT
+    recovery_key TEXT,
+    manufacturer_id TEXT
 );
 """
 
@@ -38,17 +39,23 @@ class ProvisionLog:
         cols = {r[1] for r in self._conn.execute("PRAGMA table_info(provision_logs)")}
         if "recovery_key" not in cols:
             self._conn.execute("ALTER TABLE provision_logs ADD COLUMN recovery_key TEXT")
+        # Per-manufacturer scoping: rows are owned by the logged-in manufacturer so a
+        # fresh manufacturer never sees another's History/stats. Old rows (pre-migration)
+        # have a NULL manufacturer_id and are invisible to every manufacturer filter.
+        if "manufacturer_id" not in cols:
+            self._conn.execute("ALTER TABLE provision_logs ADD COLUMN manufacturer_id TEXT")
         self._conn.commit()
 
     def add(self, mac: str, uuid: Optional[str], product_type: str,
             firmware_ver: str, test_results: Optional[dict],
             status: str, error_reason: str = "", batch: str = "",
-            cloud_confirmed: bool = False, recovery_key: str = "") -> int:
+            cloud_confirmed: bool = False, recovery_key: str = "",
+            manufacturer_id: str = "") -> int:
         cur = self._conn.execute(
             """INSERT INTO provision_logs
                (timestamp, mac, uuid, product_type, firmware_ver, test_results,
-                status, error_reason, batch, cloud_confirmed, recovery_key)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                status, error_reason, batch, cloud_confirmed, recovery_key, manufacturer_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 datetime.datetime.utcnow().isoformat() + "Z",
                 mac, uuid, product_type, firmware_ver,
@@ -56,15 +63,19 @@ class ProvisionLog:
                 status, error_reason, batch,
                 1 if cloud_confirmed else 0,
                 recovery_key or None,
+                manufacturer_id or None,
             )
         )
         self._conn.commit()
         return cur.lastrowid
 
     def list(self, limit: int = 100, offset: int = 0,
-             status: str = "", search: str = "") -> list[dict]:
+             status: str = "", search: str = "", manufacturer_id: str = "") -> list[dict]:
         query = "SELECT * FROM provision_logs WHERE 1=1"
         params = []
+        if manufacturer_id:
+            query += " AND manufacturer_id = ?"
+            params.append(manufacturer_id)
         if status:
             query += " AND status = ?"
             params.append(status)
@@ -77,25 +88,23 @@ class ProvisionLog:
         rows = self._conn.execute(query, params).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
-    def stats(self) -> dict:
+    def stats(self, manufacturer_id: str = "") -> dict:
         today = datetime.date.today().isoformat()
-        total = self._conn.execute("SELECT COUNT(*) FROM provision_logs").fetchone()[0]
-        success = self._conn.execute(
-            "SELECT COUNT(*) FROM provision_logs WHERE status='success'").fetchone()[0]
-        failed = self._conn.execute(
-            "SELECT COUNT(*) FROM provision_logs WHERE status != 'success'").fetchone()[0]
-        today_success = self._conn.execute(
-            "SELECT COUNT(*) FROM provision_logs WHERE status='success' AND timestamp LIKE ?",
-            (today + "%",)).fetchone()[0]
-        today_failed = self._conn.execute(
-            "SELECT COUNT(*) FROM provision_logs WHERE status != 'success' AND timestamp LIKE ?",
-            (today + "%",)).fetchone()[0]
+        # All counts scoped to the logged-in manufacturer when given.
+        scope = " AND manufacturer_id = ?" if manufacturer_id else ""
+        mfr = (manufacturer_id,) if manufacturer_id else ()
+
+        def _count(extra: str, extra_params: tuple = ()) -> int:
+            return self._conn.execute(
+                f"SELECT COUNT(*) FROM provision_logs WHERE 1=1{scope}{extra}",
+                mfr + extra_params).fetchone()[0]
+
         return {
-            "total": total,
-            "success": success,
-            "failed": failed,
-            "today_success": today_success,
-            "today_failed": today_failed,
+            "total": _count(""),
+            "success": _count(" AND status='success'"),
+            "failed": _count(" AND status != 'success'"),
+            "today_success": _count(" AND status='success' AND timestamp LIKE ?", (today + "%",)),
+            "today_failed": _count(" AND status != 'success' AND timestamp LIKE ?", (today + "%",)),
         }
 
     def _row_to_dict(self, row) -> dict:

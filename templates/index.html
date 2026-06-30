@@ -33,6 +33,12 @@
     .nav-tab { padding: 6px 11px; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 500; border: none; background: none; flex: 1 1 0; white-space: nowrap; }
     .nav-tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
     .nav-tab.active { color: var(--accent); background: rgba(59,130,246,0.15); }
+    /* Overview step guide */
+    .ov-step { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .ov-step:last-child { border-bottom: none; }
+    .ov-num { flex: none; width: 22px; height: 22px; border-radius: 50%; background: rgba(59,130,246,0.15); color: var(--accent); font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+    .ov-name { font-size: 13px; font-weight: 600; }
+    .ov-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
     .nav-status { order: 2; display: flex; gap: 10px; font-size: 11px; }
     .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
     .status-dot.on { background: var(--success); }
@@ -153,8 +159,8 @@
   <div class="nav" v-show="cloudConnected">
     <div class="nav-title">LDPS Provisioning Station</div>
     <div class="nav-tabs">
-      <button class="nav-tab" :class="{active: tab === 'setup'}" @click="tab='setup'">Setup</button>
       <button class="nav-tab" :class="{active: tab === 'dashboard'}" @click="tab='dashboard'">Dashboard</button>
+      <button class="nav-tab" :class="{active: tab === 'overview'}" @click="tab='overview'">Overview</button>
       <button class="nav-tab" :class="{active: tab === 'provision'}" @click="tab='provision'">Provision Node</button>
       <button class="nav-tab" :class="{active: tab === 'hub'}" @click="tab='hub'">Provision Hub</button>
       <button class="nav-tab" :class="{active: tab === 'history'}" @click="tab='history'">History</button>
@@ -174,51 +180,25 @@
       ⚠ Cloud 斷線 — 請接上網絡。注冊/寫入功能已暫停(所有注冊都要連到 Cloud)。
     </div>
 
-    <!-- ═══ Setup Tab ═══ -->
-    <div v-if="tab === 'setup'">
+    <!-- ═══ Overview Tab — the provisioning pipeline at a glance ═══ -->
+    <div v-if="tab === 'overview'">
+      <div class="text-muted text-sm mb-16">
+        The provisioning pipeline at a glance — what each step does. Run them from
+        <strong>Provision Node</strong> / <strong>Provision Hub</strong>.
+      </div>
       <div class="card-grid">
-        <!-- Test Board Connection -->
         <div class="card">
-          <div class="card-title">Test Board / Dongle</div>
-          <div class="row mb-8">
-            <select class="input" v-model="donglePort" style="flex:1">
-              <option value="">Select port...</option>
-              <option v-for="p in serialPorts" :value="p.device">[[ p.device ]] — [[ p.description ]]</option>
-            </select>
-            <button class="btn btn-outline" @click="refreshPorts" title="Refresh">&#x21bb;</button>
+          <div class="card-title">Provision Node — [[ nodeGuide.length ]] steps</div>
+          <div v-for="(s, i) in nodeGuide" :key="'n'+i" class="ov-step">
+            <div class="ov-num">[[ i + 1 ]]</div>
+            <div><div class="ov-name">[[ s.name ]]</div><div class="ov-desc">[[ s.desc ]]</div></div>
           </div>
-          <button v-if="!dongleConnected" class="btn btn-primary" :disabled="!donglePort" @click="connectDongle">Connect</button>
-          <button v-else class="btn btn-danger" @click="disconnectDongle">Disconnect</button>
         </div>
-
-        <!-- Manufacturer Login (API Key) -->
         <div class="card">
-          <div class="card-title">Manufacturer Login</div>
-          <template v-if="!cloudConnected">
-            <input class="input mb-8" v-model="apiKey" type="password" placeholder="API Key (mfr_xxxx...)" />
-            <button class="btn btn-primary" @click="cloudLogin">Login</button>
-          </template>
-          <template v-else>
-            <div class="mb-8">Logged in as <strong>[[ cloudEmail ]]</strong></div>
-            <button class="btn btn-outline" @click="cloudLogout">Logout</button>
-          </template>
-        </div>
-
-        <!-- Node Firmware -->
-        <div class="card">
-          <div class="card-title">Node Firmware Flash</div>
-          <div class="row mb-8">
-            <select class="input" v-model="nodePort" style="flex:1">
-              <option value="">Select Node USB port...</option>
-              <option v-for="p in serialPorts" :value="p.device">[[ p.device ]] — [[ p.description ]]</option>
-            </select>
-          </div>
-          <button class="btn btn-primary" :disabled="!nodePort || flashRunning" @click="flashFirmware">
-            [[ flashRunning ? 'Flashing...' : 'Flash Firmware' ]]
-          </button>
-          <div v-if="flashRunning" class="mt-8">
-            <div class="progress mb-8"><div class="progress-fill" :style="{width: flashProgress + '%'}"></div></div>
-            <div class="text-sm text-muted">[[ flashStatus ]]</div>
+          <div class="card-title">Provision Hub — [[ hubGuide.length ]] steps</div>
+          <div v-for="(s, i) in hubGuide" :key="'h'+i" class="ov-step">
+            <div class="ov-num">[[ i + 1 ]]</div>
+            <div><div class="ov-name">[[ s.name ]]</div><div class="ov-desc">[[ s.desc ]]</div></div>
           </div>
         </div>
       </div>
@@ -257,8 +237,25 @@
       </div>
     </div>
 
-    <!-- ═══ Provision Tab (Wizard) ═══ -->
+    <!-- ═══ Provision Node Tab (Wizard) ═══ -->
     <div v-if="tab === 'provision'">
+      <!-- Test Board (dongle) — used for the RF steps (discover / hardware test / playback).
+           Lives here in the node context, not on a separate Setup page. -->
+      <div class="card" style="margin-bottom:12px;padding:10px 14px;">
+        <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="text-sm text-muted" style="white-space:nowrap;">Test Board (dongle):</span>
+          <span><span class="status-dot" :class="dongleConnected ? 'on' : 'off'"></span>[[ dongleConnected ? donglePort : 'not connected' ]]</span>
+          <select v-if="!dongleConnected" class="input" v-model="donglePort" style="flex:1;min-width:150px;">
+            <option value="">Select port…</option>
+            <option v-for="p in serialPorts" :value="p.device">[[ p.device ]] — [[ p.description ]]</option>
+          </select>
+          <button v-if="!dongleConnected" class="btn btn-outline" @click="refreshPorts" title="Refresh ports">&#x21bb;</button>
+          <button v-if="!dongleConnected" class="btn btn-primary" :disabled="!donglePort" @click="connectDongle">Connect</button>
+          <button v-else class="btn btn-outline" @click="disconnectDongle">Disconnect</button>
+        </div>
+        <div v-if="dongleError" class="text-error text-sm" style="margin-top:6px;">[[ dongleError ]]</div>
+        <div class="text-muted text-sm" style="margin-top:4px;">Needed for the RF steps (discover / hardware test / playback). The Node USB port is picked per step below.</div>
+      </div>
       <div class="wizard">
         <div class="wizard-steps">
           <div v-for="(step, i) in wizardSteps" class="wizard-step"
@@ -473,78 +470,103 @@
       </div>
     </div>
 
-    <!-- ═══ Provision Hub Tab (flow B — HUB_IDENTITY §5/§6.1) ═══ -->
+    <!-- ═══ Provision Hub Tab (flow B — wizard, mirrors Provision Node) ═══ -->
     <div v-if="tab === 'hub'">
-      <div class="card" style="max-width:580px;">
-        <div class="card-title">Provision Hub (Orange Pi)</div>
-        <div class="text-muted text-sm mb-16">
-          Flow B: the Cloud signs a binding to this OPi's chip (cpuid); the Station then writes the
-          signed identity to the hub's SD over the §6.1 provisioning channel
-          (<code>[[ hubHost || 'hub' ]]</code>). Read the cpuid from the hub or type it.
+      <div class="wizard">
+        <div class="wizard-steps">
+          <div v-for="(step, i) in hubSteps" class="wizard-step"
+               :class="{active: hubIdx === i, done: step.status === 'done', fail: step.status === 'fail'}">
+            <div class="wizard-step-icon">
+              <template v-if="step.status === 'done'">&#x2713;</template>
+              <template v-else-if="step.status === 'fail'">&#x2717;</template>
+              <template v-else>[[ i + 1 ]]</template>
+            </div>
+            <span class="wizard-step-name">[[ step.name ]]</span>
+          </div>
         </div>
-        <div v-if="!cloudConnected" class="text-error text-sm mb-16">Log in to Cloud (Setup tab) first.</div>
+        <div class="wizard-content">
+          <div class="card">
+            <div class="card-title">[[ hubSteps[hubIdx].name ]]</div>
+            <div class="text-muted text-sm mb-16">
+              Flow B: the Cloud signs a binding to this OPi's chip (cpuid); the Station writes the signed
+              identity to the hub's SD over the §6.1 channel (<code>[[ hubHost || 'hub' ]]</code>).
+            </div>
 
-        <template v-if="!hubDone">
-          <!-- 1. cpuid (read over the §6.1 channel, or type it) -->
-          <div class="mb-16">
-            <label class="text-sm text-muted">Hub cpuid (RK3566 chip id)</label>
-            <div class="row" style="gap:8px;align-items:stretch;">
-              <input class="input" v-model="hubCpuid" placeholder="read from the assembled OPi"
-                     style="flex:1;font-family:monospace;" :disabled="!!hubResult" />
-              <button class="btn btn-outline" :disabled="hubBusy || !!hubResult" @click="hubReadCpuid">
-                [[ hubBusy ? '…' : 'Read from hub' ]]</button>
-            </div>
-          </div>
-          <!-- 2. ST2: hub product_type picker (HUB quota buckets only) -->
-          <div class="mb-16" style="max-width:360px;">
-            <label class="text-sm text-muted">Hub product type (quota bucket)</label>
-            <select class="input" v-model="hubProductType" style="width:100%;" :disabled="!!hubResult">
-              <option v-for="q in hubQuotas" :value="q.product" :disabled="q.quota - q.used <= 0">
-                [[ q.product ]] — [[ q.quota - q.used ]] left
-              </option>
-            </select>
-            <div v-if="cloudConnected && !hubQuotas.length" class="text-error text-sm mt-8">
-              No hub quota buckets — assign a quota on a hub-flow product in admin first.
-            </div>
-          </div>
-          <!-- 3. provision (mint + sign) -->
-          <div v-if="!hubResult" class="mb-16">
-            <button class="btn btn-primary" :disabled="hubBusy || !cloudConnected || !cloudReachable || !hubCpuid.trim() || !hubProductType"
-                    @click="hubProvision">[[ hubBusy ? 'Signing…' : 'Provision (mint + sign binding)' ]]</button>
-            <div v-if="hubError" class="text-error text-sm mt-8">[[ hubError ]]</div>
-          </div>
-          <!-- 4. signed → write to SD (step-3) → confirm -->
-          <div v-if="hubResult" style="padding:14px;border-radius:8px;background:rgba(59,130,246,0.08);border:1px solid var(--border);">
-            <div class="text-success" style="font-weight:700;">✓ Binding signed</div>
-            <div class="text-sm" style="font-family:monospace;margin:8px 0;word-break:break-all;">
-              hub_uuid: [[ hubResult.hub_uuid ]]<br>key_id: [[ hubResult.key_id ]] · sig: [[ (hubResult.binding_signature||'').slice(0,32) ]]…
-            </div>
-            <!-- Step 3: write the binding to the OPi over the §6.1 channel -->
-            <div class="mb-16" style="padding:10px;border:1px dashed var(--border);border-radius:6px;">
-              <div class="text-muted text-sm" style="margin-bottom:8px;">
-                Step 3: write <code>hub_boot_identity.json</code> to the hub SD over the §6.1 channel
-                (<code>[[ hubHost || 'hub' ]]</code>). The hub re-verifies the binding against its own
-                chip before writing, then unlocks.
+            <!-- Step 0: Read cpuid -->
+            <div v-if="hubIdx === 0" style="padding:16px 0;">
+              <label class="text-sm text-muted">Hub cpuid (RK3566 chip id)</label>
+              <div class="row mb-16" style="gap:8px;align-items:stretch;">
+                <input class="input" v-model="hubCpuid" placeholder="read from the assembled OPi, or type it"
+                       style="flex:1;font-family:monospace;" />
+                <button class="btn btn-outline" :disabled="hubBusy" @click="hubReadCpuid">[[ hubBusy ? '…' : 'Read from hub' ]]</button>
               </div>
-              <button v-if="!hubWritten" class="btn btn-primary" :disabled="hubBusy" @click="hubWriteToHub">
-                [[ hubBusy ? 'Writing…' : 'Write to Hub (§6.1)' ]]</button>
-              <div v-else class="text-success text-sm" style="font-weight:600;">
-                ✓ Written — hub unlocked. Restart the hub so it registers + heartbeats on the cloud, then Confirm.
-              </div>
+              <div v-if="hubError" class="text-error text-sm mb-8">[[ hubError ]]</div>
+              <button class="btn btn-primary" :disabled="!hubCpuid.trim()" @click="hubAdvance">Continue</button>
             </div>
-            <div class="row">
-              <button class="btn btn-success" :disabled="hubBusy || !hubWritten || !cloudReachable" @click="hubConfirm(true)">Confirm (written + QC ok)</button>
-              <button class="btn btn-danger" :disabled="hubBusy" @click="hubConfirm(false)">Release (cancel — free quota)</button>
-            </div>
-            <div v-if="hubError" class="text-error text-sm mt-8">[[ hubError ]]</div>
-          </div>
-        </template>
 
-        <div v-else style="text-align:center;padding:16px 0;">
-          <div style="font-size:56px;margin-bottom:8px;">&#x2705;</div>
-          <div style="font-size:18px;font-weight:700;">Hub Provisioned</div>
-          <div class="text-muted text-sm mb-16" style="font-family:monospace;">[[ hubDoneUuid ]]</div>
-          <button class="btn btn-primary" @click="hubReset">Provision Next Hub</button>
+            <!-- Step 1: Select product (HUB quota buckets only) -->
+            <div v-if="hubIdx === 1" style="padding:16px 0;">
+              <div class="mb-8 text-muted text-sm" style="font-family:monospace;">cpuid: [[ hubCpuid ]]</div>
+              <label class="text-sm text-muted">Hub product type (quota bucket)</label>
+              <select class="input mb-8" v-model="hubProductType" style="max-width:360px;width:100%;">
+                <option value="">Select product…</option>
+                <option v-for="q in hubQuotas" :value="q.product" :disabled="q.quota - q.used <= 0">
+                  [[ q.product ]] — [[ q.quota - q.used ]] left
+                </option>
+              </select>
+              <div v-if="cloudConnected && !hubQuotas.length" class="text-error text-sm mb-8">
+                No hub quota buckets — assign a quota on a hub-flow product in admin first.
+              </div>
+              <div><button class="btn btn-primary" :disabled="!hubProductType" @click="hubAdvance">Continue</button></div>
+            </div>
+
+            <!-- Step 2: Sign binding (mint + Cloud-sign) -->
+            <div v-if="hubIdx === 2" style="padding:16px 0;">
+              <div class="mb-16 text-muted text-sm">Mint <strong>hub_uuid</strong> + Cloud-sign the binding to cpuid <code>[[ hubCpuid ]]</code> ([[ hubProductType ]]).</div>
+              <button class="btn btn-primary" :disabled="hubBusy || !cloudReachable" @click="hubProvision">
+                [[ hubBusy ? 'Signing…' : 'Provision (mint + sign binding)' ]]</button>
+              <div v-if="hubError" class="text-error text-sm mt-8">[[ hubError ]]</div>
+            </div>
+
+            <!-- Step 3: Write to hub (§6.1) -->
+            <div v-if="hubIdx === 3" style="padding:16px 0;">
+              <div style="padding:14px;border-radius:8px;background:rgba(59,130,246,0.08);border:1px solid var(--border);">
+                <div class="text-success" style="font-weight:700;">✓ Binding signed</div>
+                <div class="text-sm" style="font-family:monospace;margin:8px 0;word-break:break-all;">
+                  hub_uuid: [[ hubResult?.hub_uuid ]]<br>key_id: [[ hubResult?.key_id ]] · sig: [[ (hubResult?.binding_signature||'').slice(0,32) ]]…
+                </div>
+                <div class="text-muted text-sm" style="margin-bottom:8px;">
+                  Write <code>hub_boot_identity.json</code> to the hub SD over the §6.1 channel
+                  (<code>[[ hubHost || 'hub' ]]</code>). The hub re-verifies against its own chip, then unlocks.
+                </div>
+                <button v-if="!hubWritten" class="btn btn-primary" :disabled="hubBusy" @click="hubWriteToHub">
+                  [[ hubBusy ? 'Writing…' : 'Write to Hub (§6.1)' ]]</button>
+                <div v-else class="text-success text-sm" style="font-weight:600;">
+                  ✓ Written — hub unlocked. Restart the hub so it registers + heartbeats, then Confirm.
+                </div>
+                <div v-if="hubError" class="text-error text-sm mt-8">[[ hubError ]]</div>
+              </div>
+            </div>
+
+            <!-- Step 4: Confirm / Release -->
+            <div v-if="hubIdx === 4" style="padding:16px 0;">
+              <div class="mb-16 text-muted text-sm">QC the unlocked hub. <strong>Confirm</strong> burns the quota; <strong>Release</strong> frees it.</div>
+              <div class="row">
+                <button class="btn btn-success" :disabled="hubBusy || !cloudReachable" @click="hubConfirm(true)">Confirm (written + QC ok)</button>
+                <button class="btn btn-danger" :disabled="hubBusy" @click="hubConfirm(false)">Release (cancel — free quota)</button>
+              </div>
+              <div v-if="hubError" class="text-error text-sm mt-8">[[ hubError ]]</div>
+            </div>
+
+            <!-- Step 5: Done -->
+            <div v-if="hubIdx === 5" style="padding:16px 0;text-align:center;">
+              <div style="font-size:64px;margin-bottom:16px;">&#x2705;</div>
+              <div style="font-size:20px;font-weight:700;margin-bottom:8px;">Hub Provisioned</div>
+              <div class="text-muted mb-16" style="font-family:monospace;">[[ hubDoneUuid ]]</div>
+              <button class="btn btn-primary" @click="hubReset">Provision Next Hub</button>
+            </div>
+
+          </div>
         </div>
       </div>
     </div>
@@ -590,7 +612,7 @@ Vue.createApp({
   delimiters: ['[[', ']]'],
   data() {
     return {
-      tab: 'setup',
+      tab: 'dashboard',
 
       // Serial ports
       serialPorts: [],
@@ -598,6 +620,7 @@ Vue.createApp({
       // Dongle / Test Board
       donglePort: '',
       dongleConnected: false,
+      dongleError: '',
 
       // Cloud (manufacturer API key)
       cloudConnected: false,
@@ -659,7 +682,16 @@ Vue.createApp({
       historySearch: '',
       historyFilter: '',
 
-      // Hub provisioning (flow B)
+      // Hub provisioning (flow B) — wizard mirrors the node wizard
+      hubIdx: 0,
+      hubSteps: [
+        { name: 'Read cpuid', status: 'pending' },
+        { name: 'Select product', status: 'pending' },
+        { name: 'Sign binding', status: 'pending' },
+        { name: 'Write to hub', status: 'pending' },
+        { name: 'Confirm', status: 'pending' },
+        { name: 'Done', status: 'pending' },
+      ],
       hubCpuid: '',
       hubProductType: '',   // ST2: hub quota bucket
       hubResult: null,      // signed binding {hub_uuid, binding_signature, key_id, signing_keys}
@@ -672,6 +704,26 @@ Vue.createApp({
 
       // WebSocket
       _ws: null,
+
+      // Overview page — canonical step guides (mirror the wizard step lists)
+      nodeGuide: [
+        { name: 'Flash Firmware', desc: 'Flash the node firmware over USB, then format its SD card.' },
+        { name: 'Discover Node', desc: 'Auto-detect over USB, or scan over RF, then pick the unit.' },
+        { name: 'Hardware Test', desc: 'Run the on-board self-test (SD, RF, NVS, LED) over RF.' },
+        { name: 'Sync Test Pack', desc: 'Push a test pack so the node can run a playback check.' },
+        { name: 'Playback Test', desc: 'Capture the WS2812 output per channel; verify FPS / timing.' },
+        { name: 'Visual Check', desc: 'Operator confirms the OLED + LED channels look correct.' },
+        { name: 'Provision UUID', desc: 'Pick a quota bucket; Cloud mints + signs the UUID, written over USB.' },
+        { name: 'Done', desc: 'Print the recovery key on the box; start the next unit.' },
+      ],
+      hubGuide: [
+        { name: 'Read cpuid', desc: "Read the assembled OPi's chip id over the §6.1 channel, or type it." },
+        { name: 'Select product', desc: 'Choose the hub quota bucket to provision against.' },
+        { name: 'Sign binding', desc: 'Cloud mints hub_uuid + signs the binding to the cpuid.' },
+        { name: 'Write to hub', desc: 'Write the signed identity to the hub SD over §6.1; the hub re-verifies + unlocks.' },
+        { name: 'Confirm', desc: 'QC the unlocked hub, then Confirm (burns quota) or Release (frees it).' },
+        { name: 'Done', desc: 'Hub registered; start the next hub.' },
+      ],
     };
   },
 
@@ -690,6 +742,7 @@ Vue.createApp({
   watch: {
     tab(val) {
       if (val === 'dashboard') { this.loadDbStats(); if (this.cloudConnected) this.loadQuota(); }
+      if (val === 'provision' && this.cloudConnected) this.loadQuota();
       if (val === 'hub' && this.cloudConnected) this.loadQuota();
       if (val === 'history') this.loadHistory();
     },
@@ -716,11 +769,13 @@ Vue.createApp({
 
     // ── Dongle ──
     async connectDongle() {
+      this.dongleError = '';
       try {
         const r = await axios.post('/api/dongle/connect', { port: this.donglePort });
         if (r.data.ok) this.dongleConnected = true;
+        else this.dongleError = r.data.error || 'connect failed';
       } catch (e) {
-        alert('Connect failed: ' + (e.response?.data?.error || e.message));
+        this.dongleError = 'Connect failed: ' + (e.response?.data?.error || e.message);
       }
     },
     async disconnectDongle() {
@@ -1000,6 +1055,10 @@ Vue.createApp({
     },
 
     // ── Hub provisioning (flow B) ──
+    hubAdvance() {
+      this.hubSteps[this.hubIdx].status = 'done';
+      if (this.hubIdx < this.hubSteps.length - 1) this.hubIdx++;
+    },
     async hubReadCpuid() {
       // §6.1: read the assembled OPi's cpuid over the provisioning channel.
       this.hubBusy = true; this.hubError = '';
@@ -1017,7 +1076,7 @@ Vue.createApp({
           cpuid: this.hubCpuid.trim(),
           product: this.hubProductType,
         });
-        if (r.data && r.data.ok) this.hubResult = r.data;
+        if (r.data && r.data.ok) { this.hubResult = r.data; this.hubAdvance(); }
         else this.hubError = (r.data && r.data.error) || 'provision failed';
       } catch (e) { this.hubError = e.response?.data?.error || e.message; }
       this.hubBusy = false;
@@ -1034,7 +1093,7 @@ Vue.createApp({
           key_id: this.hubResult.key_id,
           signing_keys: this.hubResult.signing_keys,
         });
-        if (r.data && r.data.ok && r.data.provisioned) this.hubWritten = true;
+        if (r.data && r.data.ok && r.data.provisioned) { this.hubWritten = true; this.hubAdvance(); }
         else this.hubError = (r.data && r.data.error) || 'write failed';
       } catch (e) { this.hubError = e.response?.data?.error || e.message; }
       this.hubBusy = false;
@@ -1045,7 +1104,7 @@ Vue.createApp({
       try {
         const r = await axios.post('/api/hub/confirm', { hub_uuid: this.hubResult.hub_uuid, success });
         if (r.data && r.data.ok) {
-          if (success) { this.hubDoneUuid = this.hubResult.hub_uuid; this.hubDone = true; }
+          if (success) { this.hubDoneUuid = this.hubResult.hub_uuid; this.hubDone = true; this.hubAdvance(); }
           else { this.hubReset(); }
           this.loadQuota();   // refresh remaining quota
         } else { this.hubError = 'confirm failed'; }
@@ -1053,7 +1112,9 @@ Vue.createApp({
       this.hubBusy = false;
     },
     hubReset() {
-      this.hubCpuid = ''; this.hubResult = null; this.hubError = '';
+      this.hubIdx = 0;
+      this.hubSteps.forEach(s => s.status = 'pending');
+      this.hubCpuid = ''; this.hubProductType = ''; this.hubResult = null; this.hubError = '';
       this.hubWritten = false; this.hubDone = false; this.hubDoneUuid = '';
     },
 

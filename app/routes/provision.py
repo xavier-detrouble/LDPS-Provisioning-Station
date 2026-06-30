@@ -194,6 +194,7 @@ async def finalize(request: Request, mac: str, data: dict = Body(...)):
         mac=mac, uuid=uuid, product_type=product,
         firmware_ver=firmware_ver or "?", test_results=test_results,
         status="success", cloud_confirmed=confirmed, recovery_key=recovery_key,
+        manufacturer_id=getattr(getattr(s, "cloud_client", None), "manufacturer_id", ""),
     )
 
     s.stats_provisioned += 1
@@ -227,7 +228,8 @@ async def _record_fail(s, mac: str, reason: str, test_results: dict = None,
     try:
         s.provision_log.add(mac=mac, uuid=None, product_type=product_type or "?",
                             firmware_ver=firmware_ver or "?", test_results=test_results,
-                            status="failed", error_reason=reason)
+                            status="failed", error_reason=reason,
+                            manufacturer_id=getattr(getattr(s, "cloud_client", None), "manufacturer_id", ""))
     except Exception as e:
         log(f"[Provision] provision_log(failed) error: {e}", "WARNING")
     s.stats_failed += 1

@@ -16,6 +16,12 @@ def _log(r: Request):
     return s.provision_log
 
 
+def _mfr_id(r: Request) -> str:
+    """Current logged-in manufacturer; History/stats are scoped to it."""
+    cc = getattr(_s(r), "cloud_client", None)
+    return getattr(cc, "manufacturer_id", "") if cc else ""
+
+
 @router.get("/")
 def list_history(request: Request,
                  limit: int = Query(100, le=500),
@@ -23,10 +29,11 @@ def list_history(request: Request,
                  status: str = Query(""),
                  search: str = Query("")):
     log = _log(request)
-    return {"logs": log.list(limit=limit, offset=offset, status=status, search=search)}
+    return {"logs": log.list(limit=limit, offset=offset, status=status, search=search,
+                             manufacturer_id=_mfr_id(request))}
 
 
 @router.get("/stats")
 def history_stats(request: Request):
     log = _log(request)
-    return log.stats()
+    return log.stats(manufacturer_id=_mfr_id(request))
