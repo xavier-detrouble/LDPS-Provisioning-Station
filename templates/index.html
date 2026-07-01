@@ -553,9 +553,84 @@
       </div>
     </div>
 
-    <!-- ═══ Provision Hub Tab (flow B — wizard, mirrors Provision Node) ═══ -->
+    <!-- ═══ Provision Hub Tab (flow B — automated auto-flow, same philosophy as Provision Node) ═══ -->
     <div v-if="tab === 'hub'">
-      <div class="wizard">
+      <div class="card">
+        <!-- IDLE: readiness pre-check -->
+        <div v-if="hubFlowState === 'idle'" style="padding:18px 16px;">
+          <div style="text-align:center;margin-bottom:16px;">
+            <div style="font-size:36px;">&#x1F5A5;&#xFE0F;</div>
+            <div style="font-weight:700;font-size:16px;">Automated Hub Provisioning</div>
+            <div class="text-muted text-sm">Assemble the hub (OPi + dongle) in the FRESH/factory state on the LAN — the Station checks it's ready before you start.</div>
+          </div>
+          <div style="max-width:460px;margin:0 auto;">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid;border-radius:8px;margin-bottom:8px;" :style="{borderColor: hubReady.hub?'rgba(74,222,128,0.4)':(hubReady.hubBlocked?'rgba(239,68,68,0.4)':'rgba(255,255,255,0.07)')}">
+              <span style="width:20px;font-weight:700;font-size:15px;" :style="{color: hubReady.hub?'#4ade80':(hubReady.hubBlocked?'#ef4444':'#64748b')}">[[ hubReady.hub?'✓':(hubReady.hubBlocked?'✗':'○') ]]</span>
+              <span style="min-width:150px;font-weight:600;">Hub on §6.1 (FRESH)</span>
+              <span class="text-sm" style="flex:1;" :style="{color: hubReady.hubBlocked?'#fca5a5':'var(--muted)'}">[[ hubReady.checking ? 'checking…' : (hubReady.hubState || 'not reachable') ]]</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid;border-radius:8px;" :style="{borderColor: hubReady.cloud?'rgba(74,222,128,0.4)':'rgba(255,255,255,0.07)'}">
+              <span style="width:20px;font-weight:700;font-size:15px;" :style="{color: hubReady.cloud?'#4ade80':'#64748b'}">[[ hubReady.cloud?'✓':'○' ]]</span>
+              <span style="min-width:150px;font-weight:600;">Cloud + quota</span>
+              <span class="text-muted text-sm" style="flex:1;">[[ hubReady.cloud ? ((hubProductType||'Touch Hub') + ' — quota available') : 'cloud offline or no hub quota' ]]</span>
+            </div>
+          </div>
+          <div style="text-align:center;margin-top:18px;">
+            <button class="btn btn-primary" style="font-size:16px;padding:12px 34px;" :disabled="!hubAllReady" @click="startHubFlow">&#x25B6; Start</button>
+            <button class="btn btn-outline" style="margin-left:8px;" :disabled="hubReady.checking" @click="checkHubReady(true)">[[ hubReady.checking ? 'Checking…' : '↻ Re-check' ]]</button>
+            <div v-if="!hubAllReady && !hubReady.checking" class="text-muted text-sm" style="margin-top:8px;">Start enables once both are ready. §6.1 target: <code>[[ hubHost || '?' ]]</code></div>
+          </div>
+        </div>
+
+        <!-- RUNNING / FAILED / DONE -->
+        <div v-else>
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <strong>[[ hubFlowState === 'done' ? 'Provisioned' : (hubFlowState === 'failed' ? 'Paused — needs attention' : 'Provisioning…') ]]</strong>
+            <span class="text-muted text-sm">[[ hubFlowProgress ]]%</span>
+          </div>
+          <div class="progress mb-16"><div class="progress-fill" :style="{width: hubFlowProgress + '%'}"></div></div>
+          <div>
+            <div v-for="ph in hubFlow" :key="ph.key" style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid rgba(255,255,255,0.05);">
+              <span style="width:22px;text-align:center;font-weight:700;font-size:15px;" :style="{color: ph.status==='done'?'#4ade80':(ph.status==='fail'?'#ef4444':(ph.status==='running'?'#60a5fa':'#64748b'))}">[[ ph.status==='done'?'✓':(ph.status==='fail'?'✗':(ph.status==='running'?'⟳':'○')) ]]</span>
+              <span style="min-width:150px;font-weight:600;">[[ ph.name ]]</span>
+              <span class="text-muted text-sm" style="flex:1;word-break:break-all;">[[ ph.detail ]]</span>
+            </div>
+          </div>
+
+          <!-- FAILURE pause -->
+          <div v-if="hubFlowState === 'failed'" style="margin-top:16px;border:1px solid var(--error);border-radius:8px;background:rgba(239,68,68,0.07);padding:14px;">
+            <div class="text-error" style="margin-bottom:10px;">&#x26A0; [[ hubFlowFailMsg ]]</div>
+            <button class="btn btn-primary" @click="retryHubFlow">&#x21BB; Retry this step</button>
+            <button class="btn btn-outline" style="margin-left:8px;" @click="hubFailUnit">Mark hub defective</button>
+          </div>
+
+          <!-- DONE + sticker -->
+          <div v-if="hubFlowState === 'done'" style="margin-top:16px;text-align:center;">
+            <div style="font-size:48px;">&#x2705;</div>
+            <div style="font-size:18px;font-weight:700;">Hub Provisioned</div>
+            <div class="text-muted mb-16" style="font-family:monospace;">[[ hubFlowProvision && hubFlowProvision.hub_uuid ]]</div>
+            <div v-if="hubFlowProvision" style="margin:0 auto 14px;max-width:400px;">
+              <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;text-align:left;">Label preview — print &amp; stick on the box</div>
+              <div style="display:flex;gap:14px;align-items:center;background:#fff;color:#0b0f17;border-radius:10px;padding:14px 16px;box-shadow:0 6px 24px rgba(0,0,0,0.4);">
+                <div style="width:132px;height:132px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+                  <img v-if="hubFlowProvision.qr" :src="hubFlowProvision.qr" style="width:132px;height:132px;display:block;" alt="verify QR">
+                  <span v-else style="font-size:10px;color:#94a3b8;">generating QR…</span>
+                </div>
+                <div style="text-align:left;flex:1;min-width:0;">
+                  <div style="font-weight:800;font-size:15px;">LDPS · [[ hubProductType || 'Control Hub' ]]</div>
+                  <div style="font-size:10px;color:#64748b;margin-top:8px;text-transform:uppercase;letter-spacing:.5px;">Hub UUID</div>
+                  <div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;color:#0f172a;">[[ hubFlowProvision.hub_uuid ]]</div>
+                </div>
+              </div>
+              <div class="text-muted" style="font-size:11px;margin-top:6px;text-align:left;">Scan the QR → public genuineness page: <span style="font-family:monospace;">[[ hubFlowProvision.verifyUrl ]]</span></div>
+            </div>
+            <button class="btn btn-primary" @click="nextHub">Provision Next Hub &#x25B6;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- OLD stepped wizard — hidden during cutover (removed once auto-flow field-confirmed) -->
+      <div class="wizard" v-if="false">
         <div class="wizard-steps">
           <div v-for="(step, i) in hubSteps" class="wizard-step"
                :class="{active: hubIdx === i, done: step.status === 'done', fail: step.status === 'fail'}">
@@ -786,6 +861,20 @@ Vue.createApp({
       ],
       hubCpuid: '',
       hubProductType: '',   // ST2: hub quota bucket
+      // ── Hub auto-flow ──
+      hubFlowState: 'idle',      // idle | running | failed | done
+      hubFlowProgress: 0,
+      hubFlowFailMsg: '',
+      hubFlowPhaseIdx: 0,
+      hubReady: { hub: false, hubBlocked: false, hubState: '', cloud: false, checking: false },
+      hubFlowProvision: null,    // {hub_uuid, qr, verifyUrl}
+      hubFlow: [
+        { key: 'cpuid',   name: 'Read cpuid (§6.1)',  status: 'pending', detail: '' },
+        { key: 'program', name: 'Push hub program',   status: 'pending', detail: '' },
+        { key: 'dongle',  name: 'Flash dongle FW',    status: 'pending', detail: '' },
+        { key: 'sign',    name: 'Sign binding',       status: 'pending', detail: '' },
+        { key: 'write',   name: 'Write identity',     status: 'pending', detail: '' },
+      ],
       hubResult: null,      // signed binding {hub_uuid, binding_signature, key_id, signing_keys}
       hubError: '',
       hubBusy: false,
@@ -826,6 +915,7 @@ Vue.createApp({
     cloudUrlShort() { return (this.cloudUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, ''); },
     nodeQuotas() { return (this.quotas || []).filter(q => q.provision_flow === 'node'); },
     nodeAllReady() { return this.nodeReady.dongle && this.nodeReady.node && this.nodeReady.cloud; },
+    hubAllReady() { return this.hubReady.hub && this.hubReady.cloud; },
     hubQuotas() { return (this.quotas || []).filter(q => q.provision_flow === 'hub'); },
   },
 
@@ -838,6 +928,8 @@ Vue.createApp({
       if (val === 'provision') this._startReadyPoll();
       else this._stopReadyPoll();
       if (val === 'hub' && this.cloudConnected) this.loadQuota();
+      if (val === 'hub') this._startHubReadyPoll();
+      else this._stopHubReadyPoll();
       if (val === 'history') this.loadHistory();
     },
   },
@@ -968,6 +1060,174 @@ Vue.createApp({
       }, 3000);
     },
     _stopReadyPoll() { if (this._readyTimer) { clearInterval(this._readyTimer); this._readyTimer = null; } },
+
+    // ════════ Automated hub provisioning (auto-flow) ════════
+    _setHubPhase(key, status, detail) {
+      const ph = this.hubFlow.find(p => p.key === key);
+      if (ph) { if (status) ph.status = status; if (detail !== undefined) ph.detail = detail; }
+    },
+    _hubProductKey() {
+      if (this.hubProductType) return this.hubProductType;
+      const q = (this.hubQuotas || []).find(x => (x.quota - x.used) > 0) || (this.hubQuotas || [])[0];
+      return q ? q.product : '';
+    },
+    async checkHubReady(deep) {
+      if (this.hubReady.checking) return;
+      this.hubReady.checking = true;
+      try {
+        this.hubReady.cloud = this.cloudReachable && (this.hubQuotas || []).some(q => (q.quota - q.used) > 0);
+        try {
+          const r = await axios.get('/api/hub/read-cpuid', { timeout: 5000 });
+          if (r.data && r.data.ok && r.data.cpuid) {
+            this.hubReady.hub = true; this.hubReady.hubBlocked = false;
+            this.hubReady.cpuid = r.data.cpuid; this.hubHost = r.data.hub_host || this.hubHost;
+            this.hubReady.hubState = 'FRESH · cpuid ' + r.data.cpuid.slice(0, 12) + '…';
+          } else {
+            this.hubReady.hub = false; this.hubReady.hubBlocked = false;
+            this.hubReady.hubState = (r.data && r.data.error) || 'unexpected response';
+          }
+        } catch (e) {
+          this.hubReady.hub = false; this.hubReady.cpuid = '';
+          const err = (e.response && e.response.data && e.response.data.error) || '';
+          if (/closed|provisioned/i.test(err)) { this.hubReady.hubBlocked = true; this.hubReady.hubState = 'already provisioned — clear the hub to FRESH first'; }
+          else { this.hubReady.hubBlocked = false; this.hubReady.hubState = 'not reachable on §6.1 (' + (this.hubHost || '?') + ')'; }
+        }
+      } finally { this.hubReady.checking = false; }
+    },
+    _startHubReadyPoll() {
+      this._stopHubReadyPoll();
+      this.checkHubReady(true);
+      this._hubReadyTimer = setInterval(() => {
+        if (this.tab === 'hub' && this.hubFlowState === 'idle') this.checkHubReady(false);
+        else this._stopHubReadyPoll();
+      }, 3000);
+    },
+    _stopHubReadyPoll() { if (this._hubReadyTimer) { clearInterval(this._hubReadyTimer); this._hubReadyTimer = null; } },
+    nextHub() {
+      this.hubFlowState = 'idle';
+      this.hubFlow.forEach(p => { p.status = 'pending'; p.detail = ''; });
+      this.hubFlowProvision = null; this.hubResult = null;
+      this._startHubReadyPoll();
+    },
+    startHubFlow() {
+      this._stopHubReadyPoll();
+      this.hubFlow.forEach(p => { p.status = 'pending'; p.detail = ''; });
+      this.hubFlowProvision = null; this.hubResult = null;
+      this.hubCpuid = this.hubReady.cpuid || this.hubCpuid;
+      this.hubProductType = this._hubProductKey();
+      this.hubFlowFailMsg = ''; this.hubFlowProgress = 0;
+      this._runHubFlowFrom(0);
+    },
+    async _runHubFlowFrom(startIdx) {
+      for (this.hubFlowPhaseIdx = startIdx; this.hubFlowPhaseIdx < this.hubFlow.length; this.hubFlowPhaseIdx++) {
+        const ph = this.hubFlow[this.hubFlowPhaseIdx];
+        ph.status = 'running'; this.hubFlowState = 'running';
+        this.hubFlowProgress = Math.round(this.hubFlowPhaseIdx / this.hubFlow.length * 100);
+        try { await this._runHubPhase(ph.key); ph.status = 'done'; }
+        catch (e) { ph.status = 'fail'; this.hubFlowFailMsg = (e && e.message) ? e.message : String(e); this.hubFlowState = 'failed'; return; }
+      }
+      this.hubFlowProgress = 100; this.hubFlowState = 'done';
+      if (this.cloudConnected) this.loadQuota();
+    },
+    retryHubFlow() {
+      const ph = this.hubFlow[this.hubFlowPhaseIdx];
+      if (ph) { ph.status = 'pending'; ph.detail = ''; }
+      this.hubFlowFailMsg = '';
+      this._runHubFlowFrom(this.hubFlowPhaseIdx);
+    },
+    async hubFailUnit() {
+      try {
+        if (this.hubResult && this.hubResult.hub_uuid) {
+          await axios.post('/api/hub/defect', { hub_uuid: this.hubResult.hub_uuid, reason: this.hubFlowFailMsg || 'QC failed at provisioning' });
+          this.loadQuota();
+        }
+      } catch (e) { /* best-effort */ }
+      this.hubFlowState = 'idle';
+      this.hubFlow.forEach(p => { p.status = 'pending'; p.detail = ''; });
+      this._startHubReadyPoll();
+    },
+    _runHubPhase(key) {
+      if (key === 'cpuid') return this._hubPhaseCpuid();
+      if (key === 'program') return this._hubPhaseProgram();
+      if (key === 'dongle') return this._hubPhaseDongle();
+      if (key === 'sign') return this._hubPhaseSign();
+      if (key === 'write') return this._hubPhaseWrite();
+      return Promise.resolve();
+    },
+    // Poll §6.1 read-cpuid until the hub is back (program/dongle both restart ldps-hub).
+    async _hubWaitReady(label, timeoutMs) {
+      const end = Date.now() + (timeoutMs || 60000); let elapsed = 0;
+      const key = this.hubFlow[this.hubFlowPhaseIdx].key;
+      while (Date.now() < end) {
+        await this._flowSleep(3000); elapsed += 3;
+        if (label) this._setHubPhase(key, 'running', label + ' — hub restarting… (' + elapsed + 's)');
+        try { const r = await axios.get('/api/hub/read-cpuid', { timeout: 4000 }); if (r.data && r.data.cpuid) return true; }
+        catch (e) { /* still down */ }
+      }
+      return false;
+    },
+    async _hubPhaseCpuid() {
+      this._setHubPhase('cpuid', 'running', 'Reading cpuid over §6.1…');
+      const r = await axios.get('/api/hub/read-cpuid');
+      if (!r.data || !r.data.ok || !r.data.cpuid) throw new Error('Hub not reachable on §6.1 (' + (this.hubHost || '?') + ') — check it is powered + FRESH.');
+      this.hubCpuid = r.data.cpuid; this.hubHost = r.data.hub_host || this.hubHost;
+      this._setHubPhase('cpuid', 'done', r.data.cpuid);
+    },
+    async _hubPhaseProgram() {
+      this._setHubPhase('program', 'running', 'Pushing latest hub program…');
+      let r;
+      try { r = await axios.post('/api/hub/push-program'); }
+      catch (e) { throw new Error('Push program failed: ' + ((e.response && e.response.data && e.response.data.error) || e.message)); }
+      const back = await this._hubWaitReady('program installed', 60000);
+      if (!back) throw new Error('Hub did not come back after the program install — check /tmp/program_install.log on the hub.');
+      const v = (r.data && r.data.version) ? ('v' + r.data.version) : 'installed';
+      this._setHubPhase('program', 'done', v + (r.data && r.data.downloaded === false ? ' (already latest)' : ''));
+    },
+    async _hubPhaseDongle() {
+      this._setHubPhase('dongle', 'running', 'Flashing the hub\'s dongle…');
+      let r;
+      try { r = await axios.post('/api/hub/flash-dongle'); }
+      catch (e) { throw new Error('Dongle flash failed: ' + ((e.response && e.response.data && e.response.data.error) || e.message)); }
+      const back = await this._hubWaitReady('dongle flashing', 90000);
+      if (!back) throw new Error('Hub did not come back after the dongle flash — check /tmp/dongle_flash.log on the hub.');
+      this._setHubPhase('dongle', 'done', (r.data && r.data.version) ? ('RF Bridge v' + r.data.version) : 'flashed');
+    },
+    async _hubPhaseSign() {
+      const product = this._hubProductKey();
+      if (!product) throw new Error('No Touch Hub quota bucket available.');
+      this._setHubPhase('sign', 'running', 'Minting + signing binding…');
+      const r = await axios.post('/api/hub/provision', { cpuid: this.hubCpuid, product });
+      if (!r.data || !r.data.ok || !r.data.hub_uuid) throw new Error('Sign failed: ' + ((r.data && r.data.error) || 'no binding'));
+      this.hubResult = r.data;
+      this._setHubPhase('sign', 'done', r.data.hub_uuid);
+    },
+    async _hubPhaseWrite() {
+      this._setHubPhase('write', 'running', 'Writing identity (§6.1) + confirming…');
+      let r;
+      try {
+        r = await axios.post('/api/hub/write-identity', {
+          hub_uuid: this.hubResult.hub_uuid, cpuid: this.hubResult.cpuid || this.hubCpuid,
+          binding_signature: this.hubResult.binding_signature, key_id: this.hubResult.key_id,
+          signing_keys: this.hubResult.signing_keys,
+        });
+      } catch (e) { throw new Error('Write failed: ' + ((e.response && e.response.data && e.response.data.error) || e.message)); }
+      if (!r.data || !r.data.ok || !r.data.provisioned) throw new Error('Write not confirmed: ' + ((r.data && r.data.error) || 'no ack'));
+      await axios.post('/api/hub/confirm', { hub_uuid: this.hubResult.hub_uuid, success: true }).catch(() => {});
+      this.hubFlowProvision = { hub_uuid: this.hubResult.hub_uuid };
+      this._makeHubStickerQR();
+      this._setHubPhase('write', 'done', this.hubResult.hub_uuid);
+    },
+    _makeHubStickerQR(attempt) {
+      const fp = this.hubFlowProvision;
+      if (!fp || !fp.hub_uuid) return;
+      const url = (this.cloudUrl || '').replace(/\/$/, '') + '/verify/' + fp.hub_uuid;
+      if (fp.verifyUrl !== url) this.hubFlowProvision = Object.assign({}, fp, { verifyUrl: url });
+      if (!window.qrcode) { if ((attempt || 0) < 20) setTimeout(() => this._makeHubStickerQR((attempt || 0) + 1), 250); return; }
+      try {
+        const q = window.qrcode(0, 'M'); q.addData(url); q.make();
+        this.hubFlowProvision = Object.assign({}, this.hubFlowProvision, { qr: q.createDataURL(8, 32) });
+      } catch (e) { /* keep placeholder */ }
+    },
     nextNode() {
       this.flowState = 'idle';
       this.nodeFlow.forEach(p => { p.status = 'pending'; p.detail = ''; });
