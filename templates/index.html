@@ -337,9 +337,9 @@
             <div v-if="flowProvision" style="margin:0 auto 14px;max-width:400px;">
               <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;text-align:left;">Label preview — print &amp; stick on the box</div>
               <div style="display:flex;gap:14px;align-items:center;background:#fff;color:#0b0f17;border-radius:10px;padding:14px 16px;box-shadow:0 6px 24px rgba(0,0,0,0.4);">
-                <div style="width:100px;height:100px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
-                  <img v-if="flowProvision.qr" :src="flowProvision.qr" style="width:100px;height:100px;" alt="verify QR">
-                  <span v-else style="font-size:10px;color:#94a3b8;">QR…</span>
+                <div style="width:132px;height:132px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+                  <img v-if="flowProvision.qr" :src="flowProvision.qr" style="width:132px;height:132px;display:block;" alt="verify QR">
+                  <span v-else style="font-size:10px;color:#94a3b8;">generating QR…</span>
                 </div>
                 <div style="text-align:left;flex:1;min-width:0;">
                   <div style="font-weight:800;font-size:15px;">LDPS · [[ provisionProductType || 'LED Node' ]]</div>
@@ -1115,19 +1115,22 @@ Vue.createApp({
       this._setPhase('provision', 'done', r.data.uuid);
     },
     // Build the box-label QR (→ public verify page) for the sticker preview on the Done screen.
-    _makeStickerQR() {
+    _makeStickerQR(attempt) {
       const fp = this.flowProvision;
       if (!fp || !fp.uuid) return;
       const url = (this.cloudUrl || '').replace(/\/$/, '') + '/verify/' + fp.uuid;
-      let qr = null;
+      if (fp.verifyUrl !== url) this.flowProvision = Object.assign({}, fp, { verifyUrl: url });
+      if (!window.qrcode) {                       // the CDN script isn't ready yet → retry briefly
+        if ((attempt || 0) < 20) setTimeout(() => this._makeStickerQR((attempt || 0) + 1), 250);
+        return;
+      }
       try {
-        if (window.qrcode) {
-          const q = window.qrcode(0, 'M');   // type auto, error-correction M
-          q.addData(url); q.make();
-          qr = q.createDataURL(5, 8);        // cellSize, margin → data: URL
-        }
-      } catch (e) { qr = null; }
-      this.flowProvision = Object.assign({}, fp, { verifyUrl: url, qr: qr });
+        const q = window.qrcode(0, 'M'); q.addData(url); q.make();
+        // Hi-res: cellSize 8 + a 4-module quiet zone (32px) so it stays crisp + scannable when the
+        // sticker scales it down. A low-res QR (small cellSize) blurs badly on downscale.
+        const qr = q.createDataURL(8, 32);
+        this.flowProvision = Object.assign({}, this.flowProvision, { qr: qr });
+      } catch (e) { /* keep the 'generating…' placeholder */ }
     },
 
     // ── Cloud ──
