@@ -347,6 +347,7 @@
                   <div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;color:#0f172a;">[[ flowProvision.uuid ]]</div>
                   <div style="font-size:10px;color:#64748b;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;">Recovery key</div>
                   <div style="font-family:ui-monospace,monospace;font-size:15px;font-weight:700;letter-spacing:1px;color:#0f172a;">[[ flowProvision.recovery_key ]]</div>
+                  <div style="font-size:10px;color:#64748b;margin-top:6px;">Made <span style="color:#0f172a;font-weight:600;">[[ flowProvision.production_date ]]</span></div>
                 </div>
               </div>
               <div class="text-muted" style="font-size:11px;margin-top:6px;text-align:left;">Scan the QR → public genuineness page: <span style="font-family:monospace;">[[ flowProvision.verifyUrl ]]</span></div>
@@ -620,6 +621,7 @@
                   <div style="font-weight:800;font-size:15px;">LDPS · [[ hubProductType || 'Control Hub' ]]</div>
                   <div style="font-size:10px;color:#64748b;margin-top:8px;text-transform:uppercase;letter-spacing:.5px;">Hub UUID</div>
                   <div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;color:#0f172a;">[[ hubFlowProvision.hub_uuid ]]</div>
+                  <div style="font-size:10px;color:#64748b;margin-top:6px;">Made <span style="color:#0f172a;font-weight:600;">[[ hubFlowProvision.production_date ]]</span></div>
                 </div>
               </div>
               <div class="text-muted" style="font-size:11px;margin-top:6px;text-align:left;">Scan the QR → public genuineness page: <span style="font-family:monospace;">[[ hubFlowProvision.verifyUrl ]]</span></div>
@@ -1221,7 +1223,7 @@ Vue.createApp({
       } catch (e) { throw new Error('Write failed: ' + ((e.response && e.response.data && e.response.data.error) || e.message)); }
       if (!r.data || !r.data.ok || !r.data.provisioned) throw new Error('Write not confirmed: ' + ((r.data && r.data.error) || 'no ack'));
       await axios.post('/api/hub/confirm', { hub_uuid: this.hubResult.hub_uuid, success: true }).catch(() => {});
-      this.hubFlowProvision = { hub_uuid: this.hubResult.hub_uuid };
+      this.hubFlowProvision = { hub_uuid: this.hubResult.hub_uuid, production_date: new Date().toISOString().slice(0, 10) };
       this._makeHubStickerQR();
       this._setHubPhase('write', 'done', this.hubResult.hub_uuid);
     },
@@ -1378,7 +1380,7 @@ Vue.createApp({
       } catch (e) {
         throw new Error('Provision failed: ' + (e.response?.data?.error || e.message));
       }
-      this.flowProvision = { uuid: r.data.uuid, recovery_key: r.data.recovery_key };
+      this.flowProvision = { uuid: r.data.uuid, recovery_key: r.data.recovery_key, production_date: new Date().toISOString().slice(0, 10) };
       this._makeStickerQR();
       this._setPhase('provision', 'done', r.data.uuid);
     },
