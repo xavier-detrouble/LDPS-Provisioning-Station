@@ -258,3 +258,17 @@ async def hub_push_program(request: Request):
         return JSONResponse({"error": "hub rejected the program", "hub_status": r.status_code, **body}, 502)
     log(f"[HubChannel] pushed hub program v{fw['version']} ({len(data)} bytes, downloaded={fw['changed']}) → {HUB_HOST}")
     return {"ok": True, "version": fw["version"], "downloaded": fw["changed"], "hub_host": HUB_HOST, **body}
+
+
+@router.get("/program-status")
+async def hub_program_status():
+    """Proxy the hub's program-install outcome (installing | ok | rollback | none) so the
+    auto-flow can tell a HEALTHY install from a rolled-back one (the /program push is
+    detached and can't report the result itself)."""
+    url = f"{HUB_HOST}/api/provision/program-status"
+    try:
+        async with httpx.AsyncClient(timeout=6) as c:
+            r = await c.get(url)
+        return r.json()
+    except Exception as e:
+        return JSONResponse({"error": f"cannot reach hub at {HUB_HOST} ({e})"}, 502)
