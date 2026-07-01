@@ -70,25 +70,24 @@ CLOUD_URL=http://localhost:3737 PORT=9000 python3 main.py
 - `LDPS-Hardware/docs/provisioning/HUB_IDENTITY_DESIGN.md` — hub flow B (§5), factory-access
   channel (§6.1), the Station/Hub change register (§8.3/§8.4), execution log (§13).
 
-## Status (2026-06-29)
+## Status (2026-07-02)
 
-Node provisioning + flash + product_type picker = built. Hub role (flow B) fully
-built: cloud_client + `/api/hub/*` routes + ST3 fail-record + GUI Provision Hub tab
-(cpuid + ST2 product_type picker + sign) + the **§6.1 SD-write channel both sides**
-— Station `read-cpuid`/`write-identity` proxy (LAN HTTP via `HUB_HOST`; USB-gadget
-later) ↔ Hub `/api/provision/{cpuid,identity}`. Verified vs the real OPi: read-cpuid
-ok, garbage binding refused (hub stays locked, nothing written). **Remaining:** the
-write-success E2E run (needs a UAT manufacturer + hub quota = operator-driven via the
-GUI) and swapping the §6.1 transport from LAN HTTP to USB-gadget. Hub side:
-`LDPS-Control-Hub@8b7cce9`.
+Both device types provision through a one-Start **auto-flow** (not a stepped wizard): an idle
+**readiness pre-check** gates Start, then the sequence runs automatically with per-phase progress
++ results; the operator only confirms the node Visual check + handles a failure. Tabs:
+`Dashboard · Provision Node · Provision Hub · History`.
+- **Provision Node:** Flash → Format SD → Discover (USB) → Hardware test (RF) → Visual
+  (auto-IDENTIFY lights the 8 LED ch) → Provision UUID. Node USB port + Test Board (dongle) are
+  **auto-detected** (dongle probe `DG:STATUS`→`dg:READY`; node by elimination), dongle auto-reconnects.
+  Results → `provision_log` (scoped by `manufacturer_id`) + cloud `node.test_results`.
+- **Provision Hub (flow B):** Read cpuid (§6.1) → Push hub program → Flash dongle FW → Sign →
+  Write + confirm. Readiness = hub reachable on §6.1 & FRESH·cpuid + Touch-Hub quota.
+- On done, a **box label** preview (hi-res QR → public `/verify/<uuid>` + product + UUID + recovery
+  key + production date). UI is English-only.
 
-**UX pass (2026-07-01):** tabs are now `Dashboard · Overview · Provision Node · Provision
-Hub · History` (Setup removed). Login/cloud status lives on Dashboard + nav; the Test Board
-(dongle) connect moved into the Provision Node context (it serves the RF steps), node USB
-port picked per step. **Provision Hub is the same step-wizard as Provision Node** (cpuid →
-product → sign → write → confirm → done). New **Overview** tab = a node/hub step guide. The
-local `provision_log` is now **scoped by `manufacturer_id`** (History + stats per logged-in
-manufacturer; a fresh manufacturer no longer sees another's records).
+Full as-built detail + real-HW verification: `LDPS-Hardware/docs/architecture/provisioning/HUB_IDENTITY_DESIGN.md`
+§13 (2026-07-02 entry) — auto-flow, §6.1 program-status/health-check/Safe-Mode fixes, hub Lock-page
+watchdog, verify page + warranty.
 
 **Commit model (2026-07-01):** the Station is the factory authority — **no manual confirm
 button**. It writes the identity to the hub (§6.1) / node (USB) and on the device's read-back
