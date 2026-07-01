@@ -102,14 +102,20 @@ def write_identity(port: str, uuid: str, sig: str, key_id: str) -> dict:
     if not any("identity written" in l for l in prov_lines):
         return {"ok": False, "error": "write refused/no-ack",
                 "detail": prov_lines or resp[-200:].strip()}
-    # Read-back verification — the node must report exactly what we wrote.
-    ident = read_identity(port)
-    ok = (ident.get("uuid") == uuid and ident.get("sig") == sig
-          and ident.get("key_id") == key_id)
-    if not ok:
-        log(f"[NodeSerial] read-back mismatch on {port}: "
-            f"wrote uuid={uuid} kid={key_id}, read uuid={ident.get('uuid')} "
-            f"kid={ident.get('key_id')}", "ERROR")
-    return {"ok": ok, "uuid": ident.get("uuid"), "sig": ident.get("sig"),
-            "key_id": ident.get("key_id"),
-            "detail": "read-back verified" if ok else "read-back mismatch"}
+    # Read-back verification — the node must report exactly what we wrote. RETRY it: the
+    # write acked ('[PROV] identity written') but the very first 'i' read-back sometimes comes
+    # back EMPTY (the port close/reopen right after 'P' races the node's USB-CDC / it hasn't
+    # settled), which falsely failed a write that actually stuck. Re-read a few times.
+    ident = {}
+    for _ in range(5):
+        ident = read_identity(port)
+        if (ident.get("uuid") == uuid and ident.get("sig") == sig
+                and ident.get("key_id") == key_id):
+            return {"ok": True, "uuid": uuid, "sig": sig, "key_id": key_id,
+                    "detail": "read-back verified"}
+        time.sleep(0.6)
+    log(f"[NodeSerial] read-back mismatch on {port} after retries: "
+        f"wrote uuid={uuid} kid={key_id}, read uuid={ident.get('uuid')} "
+        f"kid={ident.get('key_id')}", "ERROR")
+    return {"ok": False, "uuid": ident.get("uuid"), "sig": ident.get("sig"),
+            "key_id": ident.get("key_id"), "detail": "read-back mismatch (after retries)"}
