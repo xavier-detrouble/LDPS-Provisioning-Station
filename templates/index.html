@@ -161,7 +161,6 @@
     <div class="nav-title">LDPS Provisioning Station</div>
     <div class="nav-tabs">
       <button class="nav-tab" :class="{active: tab === 'dashboard'}" @click="tab='dashboard'">Dashboard</button>
-      <button class="nav-tab" :class="{active: tab === 'overview'}" @click="tab='overview'">Overview</button>
       <button class="nav-tab" :class="{active: tab === 'provision'}" @click="tab='provision'">Provision Node</button>
       <button class="nav-tab" :class="{active: tab === 'hub'}" @click="tab='hub'">Provision Hub</button>
       <button class="nav-tab" :class="{active: tab === 'history'}" @click="tab='history'">History</button>
@@ -181,29 +180,6 @@
       ⚠ Cloud disconnected — connect to a network. Registration / writes are paused (all registration needs the Cloud).
     </div>
 
-    <!-- ═══ Overview Tab — the provisioning pipeline at a glance ═══ -->
-    <div v-if="tab === 'overview'">
-      <div class="text-muted text-sm mb-16">
-        The provisioning pipeline at a glance — what each step does. Run them from
-        <strong>Provision Node</strong> / <strong>Provision Hub</strong>.
-      </div>
-      <div class="card-grid">
-        <div class="card">
-          <div class="card-title">Provision Node — [[ nodeGuide.length ]] steps</div>
-          <div v-for="(s, i) in nodeGuide" :key="'n'+i" class="ov-step">
-            <div class="ov-num">[[ i + 1 ]]</div>
-            <div><div class="ov-name">[[ s.name ]]</div><div class="ov-desc">[[ s.desc ]]</div></div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-title">Provision Hub — [[ hubGuide.length ]] steps</div>
-          <div v-for="(s, i) in hubGuide" :key="'h'+i" class="ov-step">
-            <div class="ov-num">[[ i + 1 ]]</div>
-            <div><div class="ov-name">[[ s.name ]]</div><div class="ov-desc">[[ s.desc ]]</div></div>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- ═══ Dashboard Tab ═══ -->
     <div v-if="tab === 'dashboard'">
@@ -260,6 +236,12 @@
             <div style="font-size:36px;">&#x1F3ED;</div>
             <div style="font-weight:700;font-size:16px;">Automated Node Provisioning</div>
             <div class="text-muted text-sm">Place a blank node on the rig (USB + powered) — the Station checks everything is ready before you start.</div>
+            <div style="margin-top:10px;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;">
+              <template v-for="(p, i) in nodeFlow" :key="p.key">
+                <span style="font-size:11px;color:#94a3b8;background:rgba(255,255,255,0.05);border-radius:20px;padding:3px 10px;">[[ i+1 ]]. [[ p.name ]]</span>
+              </template>
+            </div>
+            <div class="text-muted" style="font-size:11px;margin-top:6px;">This runs automatically on Start — you only confirm the Visual check.</div>
           </div>
           <div style="max-width:460px;margin:0 auto;">
             <!-- Test Board -->
@@ -563,6 +545,12 @@
             <div style="font-size:36px;">&#x1F5A5;&#xFE0F;</div>
             <div style="font-weight:700;font-size:16px;">Automated Hub Provisioning</div>
             <div class="text-muted text-sm">Assemble the hub (OPi + dongle) in the FRESH/factory state on the LAN — the Station checks it's ready before you start.</div>
+            <div style="margin-top:10px;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;">
+              <template v-for="(p, i) in hubFlow" :key="p.key">
+                <span style="font-size:11px;color:#94a3b8;background:rgba(255,255,255,0.05);border-radius:20px;padding:3px 10px;">[[ i+1 ]]. [[ p.name ]]</span>
+              </template>
+            </div>
+            <div class="text-muted" style="font-size:11px;margin-top:6px;">This runs automatically on Start.</div>
           </div>
           <div style="max-width:460px;margin:0 auto;">
             <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid;border-radius:8px;margin-bottom:8px;" :style="{borderColor: hubReady.hub?'rgba(74,222,128,0.4)':(hubReady.hubBlocked?'rgba(239,68,68,0.4)':'rgba(255,255,255,0.07)')}">
@@ -734,24 +722,24 @@
             <select class="input" v-model="historyFilter" style="width:120px;" @change="loadHistory">
               <option value="">All</option>
               <option value="success">Success</option>
-              <option value="test_fail">Test Fail</option>
-              <option value="uuid_fail">UUID Fail</option>
+              <option value="failed">Failed</option>
             </select>
             <button class="btn btn-outline" @click="loadHistory">Refresh</button>
           </div>
         </div>
-        <table class="table" v-if="historyLogs.length">
-          <tr><th>Time</th><th>MAC</th><th>UUID</th><th>Product</th><th>Recovery</th><th>Status</th><th>Error</th></tr>
-          <tr v-for="l in historyLogs">
-            <td class="text-sm">[[ l.timestamp?.slice(0,19) ]]</td>
-            <td>[[ l.mac ]]</td>
-            <td class="text-sm">[[ l.uuid?.slice(0,12) || '-' ]]</td>
-            <td>[[ l.product_type || '-' ]]</td>
-            <td class="text-sm" style="font-family:monospace;">[[ l.recovery_key || '-' ]]</td>
-            <td :class="l.status === 'success' ? 'text-success' : 'text-error'">[[ l.status ]]</td>
-            <td class="text-sm text-muted">[[ l.error_reason || '' ]]</td>
-          </tr>
-        </table>
+        <!-- Compact per-record list (a 7-column table overflowed the narrow kiosk + exposed the
+             recovery key). MAC + product on top, time + uuid/error below, status on the right. -->
+        <div v-if="historyLogs.length" style="display:flex;flex-direction:column;gap:6px;">
+          <div v-for="l in historyLogs" :key="l.id || (l.mac + l.timestamp)"
+               style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:var(--card);border-radius:8px;border:1px solid rgba(255,255,255,0.05);">
+            <span class="status-dot" :class="l.status === 'success' ? 'on' : 'off'" style="flex-shrink:0;"></span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:600;font-family:monospace;">[[ l.mac ]]<span class="text-muted" style="font-weight:400;font-family:inherit;"> · [[ l.product_type || '—' ]]</span></div>
+              <div class="text-muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">[[ (l.timestamp || '').slice(0,16).replace('T',' ') ]] · [[ l.status === 'success' ? (l.uuid ? l.uuid.slice(0,8) + '…' : 'provisioned') : (l.error_reason || 'failed') ]]</div>
+            </div>
+            <span :class="l.status === 'success' ? 'text-success' : 'text-error'" style="font-size:12px;font-weight:600;flex-shrink:0;">[[ l.status ]]</span>
+          </div>
+        </div>
         <div v-else class="text-muted" style="text-align:center;padding:40px;">No records yet
         </div>
       </div>
@@ -1011,8 +999,11 @@ Vue.createApp({
     // Readiness pre-check (idle screen): the operator SEES the dongle + a blank node + quota
     // are ready BEFORE Start — so the flow never fails on a detect-after-Start edge case.
     async checkReady(deep) {
-      if (this.nodeReady.checking) return;
-      this.nodeReady.checking = true;
+      if (this._readyBusy) return;
+      this._readyBusy = true;
+      // Only the manual Re-check shows 'checking…' — a periodic poll toggling it every 3s
+      // flickered the whole readiness panel (text/hint/button all flip).
+      if (deep) this.nodeReady.checking = true;
       try {
         if (!this.dongleConnected) { try { await this.detectDongle(); } catch (e) {} }
         this.nodeReady.dongle = this.dongleConnected;
@@ -1050,6 +1041,7 @@ Vue.createApp({
           this.nodeReady.node = !this.nodeReady.nodeBlocked;
         }
       } finally {
+        this._readyBusy = false;
         this.nodeReady.checking = false;
       }
     },
@@ -1074,8 +1066,9 @@ Vue.createApp({
       return q ? q.product : '';
     },
     async checkHubReady(deep) {
-      if (this.hubReady.checking) return;
-      this.hubReady.checking = true;
+      if (this._hubReadyBusy) return;
+      this._hubReadyBusy = true;
+      if (deep) this.hubReady.checking = true;   // periodic poll must not toggle it (flicker)
       try {
         this.hubReady.cloud = this.cloudReachable && (this.hubQuotas || []).some(q => (q.quota - q.used) > 0);
         try {
@@ -1094,7 +1087,7 @@ Vue.createApp({
           if (/closed|provisioned/i.test(err)) { this.hubReady.hubBlocked = true; this.hubReady.hubState = 'already provisioned — clear the hub to FRESH first'; }
           else { this.hubReady.hubBlocked = false; this.hubReady.hubState = 'not reachable on §6.1 (' + (this.hubHost || '?') + ')'; }
         }
-      } finally { this.hubReady.checking = false; }
+      } finally { this._hubReadyBusy = false; this.hubReady.checking = false; }
     },
     _startHubReadyPoll() {
       this._stopHubReadyPoll();
