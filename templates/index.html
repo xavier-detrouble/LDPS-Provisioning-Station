@@ -166,6 +166,7 @@
       <button class="nav-tab" :class="{active: tab === 'history'}" @click="tab='history'">History</button>
     </div>
     <div class="nav-status">
+      <span v-if="envBadge.label" :style="{ background: envBadge.bg, color: envBadge.color, fontSize:'10px', fontWeight:'800', padding:'2px 7px', borderRadius:'5px', letterSpacing:'0.5px', border:'1px solid '+envBadge.color }" :title="'Cloud: ' + cloudUrl">[[ envBadge.label ]]</span>
       <span><span class="status-dot" :class="dongleConnected ? 'on' : 'off'"></span>Test Board</span>
       <span :title="cloudReachable ? 'Cloud connected' : 'Cloud offline'"><span class="status-dot" :class="cloudReachable ? 'on' : 'off'"></span><span class="who">[[ cloudEmail || 'Cloud' ]]</span></span>
       <button class="nav-logout" @click="cloudLogout">Logout</button>
@@ -903,6 +904,16 @@ Vue.createApp({
     },
     // ST2: split the quota buckets by family provision_flow so each picker shows its own.
     cloudUrlShort() { return (this.cloudUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, ''); },
+    envBadge() {
+      // Which Cloud this Station provisions against — colour-coded (LOCAL blue / UAT orange /
+      // PROD red) so you never provision against the wrong environment by accident.
+      const u = (this.cloudUrl || '').toLowerCase();
+      if (/localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.|10\.\d|172\.(1[6-9]|2\d|3[01])\./.test(u))
+        return { label: 'LOCAL', color: '#60a5fa', bg: 'rgba(96,165,250,0.16)' };
+      if (/uat/.test(u)) return { label: 'UAT', color: '#fb923c', bg: 'rgba(251,146,60,0.16)' };
+      if (/zeabur|ldpstudioc/.test(u)) return { label: 'PROD', color: '#f87171', bg: 'rgba(248,113,113,0.18)' };
+      return { label: '', color: '', bg: '' };
+    },
     nodeQuotas() { return (this.quotas || []).filter(q => q.provision_flow === 'node'); },
     nodeAllReady() { return this.nodeReady.dongle && this.nodeReady.node && this.nodeReady.cloud; },
     hubAllReady() { return this.hubReady.hub && this.hubReady.cloud; },

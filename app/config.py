@@ -19,8 +19,35 @@ STAGE_CLOUD_URLS = {
     "prod": "https://ldpstudioc.zeabur.app",
 }
 _STAGE = os.environ.get("LDPS_STAGE", "").strip().lower()
-DEFAULT_CLOUD_URL = (os.environ.get("CLOUD_URL") or STAGE_CLOUD_URLS.get(_STAGE)
-                     or "https://ldpstudioc.zeabur.app")
+_ENV_CLOUD_URL = os.environ.get("CLOUD_URL", "").strip()
+if _ENV_CLOUD_URL:
+    DEFAULT_CLOUD_URL = _ENV_CLOUD_URL
+elif _STAGE in STAGE_CLOUD_URLS:
+    DEFAULT_CLOUD_URL = STAGE_CLOUD_URLS[_STAGE]
+else:
+    # Fail-fast (Xavier): the Station must NEVER silently default to production. Provisioning
+    # against the live cloud burns real quota + writes real recovery keys, so a forgotten stage
+    # should STOP startup, not quietly hit prod. To use prod you must say so explicitly.
+    raise RuntimeError(
+        "LDPS_STAGE (or CLOUD_URL) is required — the Station refuses to default to production.\n"
+        "Set one explicitly, e.g.  LDPS_STAGE=local PORT=9000 python3 main.py  (or =uat / =prod).\n"
+        "Stages: " + ", ".join(STAGE_CLOUD_URLS) + ".  See ../docs/how-to/STAGE_SWITCH.md."
+    )
+
+def _derive_stage(url: str) -> str:
+    """Stage label from the resolved Cloud URL — correct even when CLOUD_URL was set directly."""
+    import re
+    u = (url or "").lower()
+    host = u.split("//", 1)[-1]
+    if re.search(r"localhost|127\.0\.0\.1|0\.0\.0\.0", u) or re.match(r"(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)", host):
+        return "local"
+    if "uat" in u:
+        return "uat"
+    if "zeabur" in u or "ldpstudioc" in u:
+        return "prod"
+    return "unknown"
+
+LDPS_STAGE_RESOLVED = _STAGE if _STAGE in STAGE_CLOUD_URLS else _derive_stage(DEFAULT_CLOUD_URL)
 
 # §6.1 hub provisioning channel — where the Station reaches the assembled OPi to read its
 # cpuid + write the cloud-signed binding (flow B step-3). Factory transport = USB-gadget/eth
